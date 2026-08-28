@@ -6,6 +6,41 @@ Tüm görsel efektler, renkler, bar yönleri, uyarı eşikleri ve dahili simüla
 
 ---
 
+## 🚀 Hızlı Kurulum (EXE — Önerilen)
+
+### 1. [Releases](../../releases) sayfasından `AITokenTracker-windows.zip` dosyasını indirin
+### 2. ZIP'i herhangi bir yere çıkarın
+### 3. `setup.bat` dosyasına çift tıklayın
+
+Bu kadar! Kurulum otomatik olarak:
+- ✅ `AITokenTracker.exe`'yi `%LOCALAPPDATA%\AITokenTracker\` klasörüne yükler
+- ✅ SignalRGB efektini `Documents\WhirlwindFX\Effects\` altına kopyalar
+- ✅ Windows başlangıcına ekler (arka planda otomatik çalışır)
+- ✅ Masaüstüne kısayol oluşturur
+- ✅ Servisi hemen başlatır
+
+---
+
+## 🛠️ Geliştirici Kurulumu (Kaynak Koddan)
+
+### Adım 1: Efekti SignalRGB'ye Yükleme
+```bash
+python bridge.py --install
+```
+
+### Adım 2: Köprüyü Çalıştırma
+```bash
+python bridge.py
+```
+
+### Adım 3: EXE Oluşturma (isteğe bağlı)
+```bash
+pip install pyinstaller
+pyinstaller --onefile --name AITokenTracker --add-data "effects/AI Token Tracker;effects/AI Token Tracker" bridge.py
+```
+
+---
+
 ## 🚀 Özellikler
 
 - **Tüm Araçları Otomatik Yerel Olarak İzler:**
@@ -28,27 +63,17 @@ Tüm görsel efektler, renkler, bar yönleri, uyarı eşikleri ve dahili simüla
 
 ---
 
-## 📦 Kurulum ve Kullanım
+## 📋 CLI Komutları
 
-### 1. Adım: Efekti SignalRGB'ye Yükleme
-Efekt dosyasını SignalRGB'nin efektler klasörüne tek tıkla kopyalamak için:
-```powershell
-.\install.ps1
 ```
-*(veya `install.bat` dosyasına çift tıklayın).*
+AITokenTracker.exe [seçenekler]
 
-### 2. Adım: SignalRGB İçinden Efekti Seçme
-1. **SignalRGB** uygulamasını açın.
-2. **Effects** (Efektler) sekmesine gidin.
-3. **AI Token Tracker** efektini seçin ve uygulayın.
-4. **Customize** (Özelleştir) panelinden istediğiniz renkleri, bar modunu ve yönünü ayarlayın.
-
-### 3. Adım: Token Takipçi Köprüsünü Başlatma
-Arka planda token'ları otomatik okuyup SignalRGB'ye göndermek için:
-```bash
-python -m src.main
+Seçenekler:
+  --install       SignalRGB efekt dosyalarını otomatik yükler
+  --background    Konsol penceresini gizler, arka planda çalışır
+  --config PATH   Özel config.json dosya yolu belirtir
+  -h, --help      Yardım mesajını gösterir
 ```
-*(veya `start.bat` dosyasına çift tıklayın).*
 
 ---
 
@@ -100,3 +125,44 @@ python -m src.main
 | **Smoothing Alpha** | Slider (0-100) | Renk ve bar geçişlerinin akıcılığı (Varsayılan: 75) |
 | **Flash On Low Quota** | Toggle | Kota %20'nin altına indiğinde flaş/uyarı verme |
 | **[TEST] Manual Test Mode** | Toggle | SignalRGB içinde manuel slider ile test etme |
+
+---
+
+## 🔄 CI/CD (Otomatik Build & Release)
+
+Bu proje GitHub Actions ile otomatik derleme ve yayınlama desteğine sahiptir:
+
+- **Her push (main/master):** Otomatik olarak `AITokenTracker.exe` derlenir ve artifact olarak yüklenir.
+- **Tag push (`v*`):** Otomatik olarak GitHub Release oluşturulur ve `AITokenTracker-windows.zip` eklenir.
+
+### Release Yayınlama:
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+---
+
+## 📁 Proje Yapısı
+
+```
+SignalRGBAIToken/
+├── bridge.py                    # Tek dosya konsolide kaynak (EXE'nin kaynağı)
+├── config.json                  # Yapılandırma dosyası
+├── setup.ps1                    # Windows installer (PowerShell)
+├── setup.bat                    # Installer başlatıcı
+├── effects/
+│   └── AI Token Tracker/
+│       ├── AI Token Tracker.html  # SignalRGB efekt kodu
+│       └── AI Token Tracker.png   # Efekt önizleme ikonu
+├── src/                         # Modüler kaynak kod (geliştirme)
+│   ├── providers/               # Her AI aracı için ayrı tarayıcı
+│   ├── config.py
+│   ├── scanner.py
+│   ├── signalrgb_client.py
+│   └── main.py
+├── .github/
+│   └── workflows/
+│       └── build-release.yml    # CI/CD: Otomatik EXE build + Release
+└── README.md
+```
