@@ -116,28 +116,45 @@
   let waveOffset = 0;
   let blinkPhase = 0;
 
-  // SignalRGB Canvas API Event Handler
-  function onCanvasApiEvent(sender, event) {
+  // SignalRGB Canvas API Event Handler - supports all signature variations
+  function onCanvasApiEvent(arg1, arg2) {
     try {
-      let data = event;
-      if (typeof event === "string") {
+      let rawData = null;
+
+      // 1. Called as onCanvasApiEvent(apiEvent) where apiEvent = { sender: '...', event: '...' }
+      if (arg1 && typeof arg1 === "object" && ("event" in arg1 || "sender" in arg1)) {
+        rawData = arg1.event !== undefined ? arg1.event : arg1;
+      }
+      // 2. Called as onCanvasApiEvent(sender, event)
+      else if (arg2 !== undefined) {
+        rawData = arg2;
+      }
+      // 3. Direct payload
+      else {
+        rawData = arg1;
+      }
+
+      let data = rawData;
+      if (typeof rawData === "string") {
         try {
-          data = JSON.parse(event);
+          data = JSON.parse(rawData);
         } catch (e) {
-          if (event.startsWith("percent:")) {
-            data = { percentage: parseFloat(event.split(":")[1]) };
-          } else if (event === "generating_start") {
+          if (rawData.startsWith("percent:")) {
+            data = { percentage: parseFloat(rawData.split(":")[1]) };
+          } else if (rawData === "generating_start") {
             data = { is_generating: true };
-          } else if (event === "generating_stop") {
+          } else if (rawData === "generating_stop") {
             data = { is_generating: false };
           } else {
-            data = { raw: event };
+            data = { raw: rawData };
           }
         }
       }
 
       if (typeof data === "object" && data !== null) {
-        if (data.percentage !== undefined) state.percentage = Math.max(0, Math.min(100, Number(data.percentage)));
+        if (data.percentage !== undefined) {
+          state.percentage = Math.max(0, Math.min(100, Number(data.percentage)));
+        }
         if (data.used_tokens !== undefined) state.used_tokens = Number(data.used_tokens);
         if (data.remaining_tokens !== undefined) state.remaining_tokens = Number(data.remaining_tokens);
         if (data.daily_tokens !== undefined) state.daily_tokens = Number(data.daily_tokens);
@@ -151,6 +168,8 @@
       console.error("Error processing CanvasApiEvent:", err);
     }
   }
+  window.onCanvasApiEvent = onCanvasApiEvent;
+
 
   function hexToRgb(hex) {
     let clean = String(hex).replace("#", "");
