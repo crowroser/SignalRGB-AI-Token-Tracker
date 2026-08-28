@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>AI Token Tracker</title>
+  <meta description="Real-time AI Token Usage & Quota Visualizer for SignalRGB. Tracks Claude Code, Codex, Antigravity, Cursor, Gemini CLI, Grok, Copilot, and API limits across all your RGB hardware." />
+  <meta publisher="SignalRGB AI Integration" />
+
+  <!-- 1. DISPLAY & ANIMATION MODE -->
+  <meta
+    property="display_mode"
+    label="Visual Mode"
+    type="combobox"
+    values="Progress Bar,Solid Gradient,Active Pulse,Matrix Wave,Circular Gauge,Split Zones"
+    default="Progress Bar"
+  />
+  <meta
+    property="bar_direction"
+    label="Bar Orientation"
+    type="combobox"
+    values="Left to Right,Right to Left,Bottom to Top,Top to Bottom,Center Out"
+    default="Left to Right"
+  />
+
+  <!-- 2. COLOR PALETTE -->
+  <meta property="color_high" label="High / Full Quota Color" type="color" default="#00FF66" />
+  <meta property="color_med" label="Medium Quota Color" type="color" default="#FFB700" />
+  <meta property="color_low" label="Low / Critical Color" type="color" default="#FF0044" />
+  <meta property="color_active" label="Active Generation Color" type="color" default="#00D4FF" />
+  <meta property="color_bg" label="Background / Empty Color" type="color" default="#0A0B12" />
+
+  <!-- 3. ACTIVE GENERATION & DYNAMICS -->
+  <meta property="enable_gen_fx" label="Enable Generation FX" type="boolean" default="1" />
+  <meta
+    property="gen_fx_style"
+    label="Generation FX Style"
+    type="combobox"
+    values="Pulse Glow,Matrix Stream,Neon Surge,Strobe"
+    default="Pulse Glow"
+  />
+  <meta property="active_speed" label="Animation Speed" type="number" min="1" max="100" default="50" />
+  <meta property="smoothing" label="Smoothing Alpha" type="number" min="0" max="100" default="75" />
+
+  <!-- 4. ALARMS & THRESHOLDS -->
+  <meta property="enable_warning_blink" label="Flash On Low Quota" type="boolean" default="1" />
+  <meta property="warning_threshold" label="Warning Threshold (%)" type="number" min="5" max="50" default="20" />
+  <meta property="critical_threshold" label="Critical Threshold (%)" type="number" min="1" max="25" default="10" />
+  <meta property="show_hud" label="Draw Text HUD Overlay" type="boolean" default="1" />
+
+  <!-- 5. TEST & SIMULATION CONTROLS -->
+  <meta property="test_mode" label="[TEST] Enable Manual Test Mode" type="boolean" default="0" />
+  <meta property="test_percentage" label="[TEST] Simulated Remaining (%)" type="number" min="0" max="100" default="70" />
+  <meta property="test_generating" label="[TEST] Simulate Active Generation" type="boolean" default="0" />
+</head>
+
+<style>
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+  body {
+    overflow: hidden;
+    background: #000;
+    width: 100vw;
+    height: 100vh;
+  }
+  #canvas {
+    width: 100%;
+    height: 100%;
+    object-fit: fill;
+    image-rendering: pixelated;
+  }
+</style>
+
+<body>
+  <canvas id="canvas" width="320" height="200"></canvas>
+</body>
+
+<script>
+  // Safe variable initialization in case host engine hasn't injected globals yet
+  var display_mode         = typeof display_mode         !== "undefined" ? display_mode         : "Progress Bar";
+  var bar_direction        = typeof bar_direction        !== "undefined" ? bar_direction        : "Left to Right";
+  var color_high           = typeof color_high           !== "undefined" ? color_high           : "#00FF66";
+  var color_med            = typeof color_med            !== "undefined" ? color_med            : "#FFB700";
+  var color_low            = typeof color_low            !== "undefined" ? color_low            : "#FF0044";
+  var color_active         = typeof color_active         !== "undefined" ? color_active         : "#00D4FF";
+  var color_bg             = typeof color_bg             !== "undefined" ? color_bg             : "#0A0B12";
+  var enable_gen_fx        = typeof enable_gen_fx        !== "undefined" ? enable_gen_fx        : 1;
+  var gen_fx_style         = typeof gen_fx_style         !== "undefined" ? gen_fx_style         : "Pulse Glow";
+  var active_speed         = typeof active_speed         !== "undefined" ? active_speed         : 50;
+  var smoothing            = typeof smoothing            !== "undefined" ? smoothing            : 75;
+  var enable_warning_blink = typeof enable_warning_blink !== "undefined" ? enable_warning_blink : 1;
+  var warning_threshold    = typeof warning_threshold    !== "undefined" ? warning_threshold    : 20;
+  var critical_threshold   = typeof critical_threshold   !== "undefined" ? critical_threshold   : 10;
+  var show_hud             = typeof show_hud             !== "undefined" ? show_hud             : 1;
+  var test_mode            = typeof test_mode            !== "undefined" ? test_mode            : 0;
+  var test_percentage      = typeof test_percentage      !== "undefined" ? test_percentage      : 70;
+  var test_generating      = typeof test_generating      !== "undefined" ? test_generating      : 0;
+
+  const canvas = document.getElementById("canvas");
+  const ctx = canvas.getContext("2d", { willReadFrequently: false });
+  const W = canvas.width;
+  const H = canvas.height;
+
+  // Live State from Python Bridge or Test Mode
+  let state = {
+    percentage: 100,          // 0 to 100% remaining (or inverted for usage)
+    used_tokens: 0,
+    remaining_tokens: 0,
+    daily_tokens: 0,
+    is_generating: false,
+    tokens_per_sec: 0,
+    provider: "Antigravity",
+    model: "gemini-3.7-flash",
+    last_update_time: Date.now()
+  };
+
+  // Smoothed runtime values for fluid 60 FPS transitions
+  let currentPercentage = 100;
+  let animClock = 0;
+  let waveOffset = 0;
+  let blinkPhase = 0;
+
+  // SignalRGB Canvas API Event Handler
+  // Receives HTTP POST events from Python bridge: http://localhost:16034/canvas/event
+  function onCanvasApiEvent(sender, event) {
+    try {
+      let data = event;
+      if (typeof event === "string") {
+        try {
+          data = JSON.parse(event);
+        } catch (e) {
+          // If raw event string e.g. "active" or "percent:75"
+          if (event.startsWith("percent:")) {
+            data = { percentage: parseFloat(event.split(":")[1]) };
+          } else if (event === "generating_start") {
+            data = { is_generating: true };
+          } else if (event === "generating_stop") {
+            data = { is_generating: false };
+          } else {
+            data = { raw: event };
+          }
+        }
+      }
+
+      if (typeof data === "object" && data !== null) {
+        if (data.percentage !== undefined) state.percentage = Math.max(0, Math.min(100, Number(data.percentage)));
+        if (data.used_tokens !== undefined) state.used_tokens = Number(data.used_tokens);
+        if (data.remaining_tokens !== undefined) state.remaining_tokens = Number(data.remaining_tokens);
+        if (data.daily_tokens !== undefined) state.daily_tokens = Number(data.daily_tokens);
+        if (data.is_generating !== undefined) state.is_generating = Boolean(data.is_generating);
+        if (data.tokens_per_sec !== undefined) state.tokens_per_sec = Number(data.tokens_per_sec);
+        if (data.provider) state.provider = String(data.provider);
+        if (data.model) state.model = String(data.model);
+        state.last_update_time = Date.now();
+      }
+    } catch (err) {
+      console.error("Error processing CanvasApiEvent:", err);
+    }
+  }
+
+  // Also support object-signature onCanvasApiEvent(apiEvent)
+  function handleApiEvent(apiEvent) {
+    if (!apiEvent) return;
+    if (apiEvent.sender && apiEvent.event) {
+      onCanvasApiEvent(apiEvent.sender, apiEvent.event);
+    } else {
+      onCanvasApiEvent("bridge", apiEvent);
+    }
+  }
+
+  // Color Utility Helpers
+  function hexToRgb(hex) {
+    let clean = hex.replace("#", "");
+    if (clean.length === 3) {
+      clean = clean.split("").map(c => c + c).join("");
+    }
+    const num = parseInt(clean, 16);
+    return {
+      r: (num >> 16) & 255,
+      g: (num >> 8) & 255,
+      b: num & 255
+    };
+  }
+
+  function lerpColor(c1Hex, c2Hex, t) {
+    const rgb1 = hexToRgb(c1Hex);
+    const rgb2 = hexToRgb(c2Hex);
+    t = Math.max(0, Math.min(1, t));
+    const r = Math.round(rgb1.r + (rgb2.r - rgb1.r) * t);
+    const g = Math.round(rgb1.g + (rgb2.g - rgb1.g) * t);
+    const b = Math.round(rgb1.b + (rgb2.b - rgb1.b) * t);
+    return `rgb(${r}, ${g}, ${b})`;
+  }
+
+  // Calculates 3-stop gradient color (High -> Medium -> Low)
+  function getQuotaColor(pct) {
+    pct = Math.max(0, Math.min(100, pct));
+    if (pct >= 50) {
+      // 50% to 100%: Lerp between Med and High
+      const t = (pct - 50) / 50;
+      return lerpColor(color_med, color_high, t);
+    } else {
+      // 0% to 50%: Lerp between Low and Med
+      const t = pct / 50;
+      return lerpColor(color_low, color_med, t);
+    }
+  }
+
+  // Main Render Loop
+  function update() {
+    // 1. Compute effective state (Test Mode override vs Live Bridge)
+    let targetPct = test_mode ? Number(test_percentage) : state.percentage;
+    let isGen = test_mode ? Boolean(test_generating) : state.is_generating;
+
+    // 2. Exponential Moving Average Smoothing
+    const smoothFactor = Math.max(0.02, 1.0 - (smoothing / 100.0) * 0.95);
+    currentPercentage += (targetPct - currentPercentage) * smoothFactor;
+
+    // 3. Time increments for animations
+    const speedFactor = (active_speed / 50.0) * 0.05;
+    animClock += speedFactor;
+    waveOffset += speedFactor * 40;
+    blinkPhase += 0.1;
+
+    // 4. Critical / Low Warning Blink Calculation
+    let isWarning = currentPercentage <= Number(warning_threshold);
+    let isCritical = currentPercentage <= Number(critical_threshold);
+    let blinkDim = 1.0;
+    if (enable_warning_blink && (isWarning || isCritical)) {
+      const blinkSpeed = isCritical ? 0.25 : 0.12;
+      blinkDim = (Math.sin(animClock * 30 * blinkSpeed) + 1.0) * 0.4 + 0.2;
+    }
+
+    // 5. Clear canvas with background color
+    ctx.fillStyle = color_bg;
+    ctx.fillRect(0, 0, W, H);
+
+    // 6. Execute chosen visual mode
+    switch (display_mode) {
+      case "Progress Bar":
+        drawProgressBar(currentPercentage, isGen, blinkDim);
+        break;
+      case "Solid Gradient":
+        drawSolidGradient(currentPercentage, isGen, blinkDim);
+        break;
+      case "Active Pulse":
+        drawActivePulse(currentPercentage, isGen, blinkDim);
+        break;
+      case "Matrix Wave":
+        drawMatrixWave(currentPercentage, isGen, blinkDim);
+        break;
+      case "Circular Gauge":
+        drawCircularGauge(currentPercentage, isGen, blinkDim);
+        break;
+      case "Split Zones":
+        drawSplitZones(currentPercentage, isGen, blinkDim);
+        break;
+      default:
+        drawProgressBar(currentPercentage, isGen, blinkDim);
+        break;
+    }
+
+    // 7. Optional Text HUD Overlay
+    if (show_hud) {
+      drawHUD(currentPercentage, isGen);
+    }
+
+    window.requestAnimationFrame(update);
+  }
+
+  // --- Visual Mode 1: PROGRESS BAR ---
+  function drawProgressBar(pct, isGen, blinkDim) {
+    const fraction = pct / 100.0;
+    const baseColor = getQuotaColor(pct);
+
+    ctx.save();
+    let grad;
+
+    if (bar_direction === "Left to Right") {
+      const fillW = Math.round(W * fraction);
+      grad = ctx.createLinearGradient(0, 0, fillW, 0);
+      grad.addColorStop(0, getQuotaColor(0));
+      grad.addColorStop(1, baseColor);
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, fillW, H);
+
+      // Active generation surge wave
+      if (isGen && enable_gen_fx && fillW > 0) {
+        drawGenOverlay(0, 0, fillW, H);
+      }
+    } else if (bar_direction === "Right to Left") {
+      const fillW = Math.round(W * fraction);
+      const startX = W - fillW;
+      grad = ctx.createLinearGradient(W, 0, startX, 0);
+      grad.addColorStop(0, getQuotaColor(0));
+      grad.addColorStop(1, baseColor);
+      ctx.fillStyle = grad;
+      ctx.fillRect(startX, 0, fillW, H);
+
+      if (isGen && enable_gen_fx && fillW > 0) {
+        drawGenOverlay(startX, 0, fillW, H);
+      }
+    } else if (bar_direction === "Bottom to Top") {
+      const fillH = Math.round(H * fraction);
+      const startY = H - fillH;
+      grad = ctx.createLinearGradient(0, H, 0, startY);
+      grad.addColorStop(0, getQuotaColor(0));
+      grad.addColorStop(1, baseColor);
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, startY, W, fillH);
+
+      if (isGen && enable_gen_fx && fillH > 0) {
+        drawGenOverlay(0, startY, W, fillH);
+      }
+    } else if (bar_direction === "Top to Bottom") {
+      const fillH = Math.round(H * fraction);
+      grad = ctx.createLinearGradient(0, 0, 0, fillH);
+      grad.addColorStop(0, getQuotaColor(0));
+      grad.addColorStop(1, baseColor);
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, W, fillH);
+
+      if (isGen && enable_gen_fx && fillH > 0) {
+        drawGenOverlay(0, 0, W, fillH);
+      }
+    } else if (bar_direction === "Center Out") {
+      const fillW = Math.round(W * fraction);
+      const startX = Math.round((W - fillW) / 2);
+      grad = ctx.createLinearGradient(W / 2, 0, W / 2 + fillW / 2, 0);
+      grad.addColorStop(0, baseColor);
+      grad.addColorStop(1, getQuotaColor(0));
+      ctx.fillStyle = baseColor;
+      ctx.fillRect(startX, 0, fillW, H);
+
+      if (isGen && enable_gen_fx && fillW > 0) {
+        drawGenOverlay(startX, 0, fillW, H);
+      }
+    }
+
+    ctx.restore();
+  }
+
+  // --- Visual Mode 2: SOLID GRADIENT ---
+  function drawSolidGradient(pct, isGen, blinkDim) {
+    let baseColor = getQuotaColor(pct);
+    ctx.save();
+    ctx.fillStyle = baseColor;
+    ctx.globalAlpha = blinkDim;
+    ctx.fillRect(0, 0, W, H);
+
+    if (isGen && enable_gen_fx) {
+      drawGenOverlay(0, 0, W, H);
+    }
+    ctx.restore();
+  }
+
+  // --- Visual Mode 3: ACTIVE PULSE ---
+  function drawActivePulse(pct, isGen, blinkDim) {
+    const baseColor = getQuotaColor(pct);
+    const pulseRate = isGen ? 8 : 2;
+    const pulseAlpha = (Math.sin(animClock * pulseRate) * 0.5 + 0.5) * 0.8 + 0.2;
+
+    ctx.save();
+    ctx.fillStyle = isGen ? color_active : baseColor;
+    ctx.globalAlpha = pulseAlpha * blinkDim;
+    ctx.fillRect(0, 0, W, H);
+
+    if (isGen && enable_gen_fx) {
+      drawGenOverlay(0, 0, W, H);
+    }
+    ctx.restore();
+  }
+
+  // --- Visual Mode 4: MATRIX WAVE ---
+  function drawMatrixWave(pct, isGen, blinkDim) {
+    const baseColor = getQuotaColor(pct);
+    const waveCols = 20;
+    const colW = W / waveCols;
+
+    ctx.save();
+    for (let i = 0; i < waveCols; i++) {
+      const colFraction = (i + 1) / waveCols;
+      if (colFraction > pct / 100.0) {
+        ctx.fillStyle = color_bg;
+        ctx.fillRect(i * colW, 0, colW, H);
+        continue;
+      }
+
+      const wavePhase = Math.sin((i * 0.5) + (waveOffset * 0.1));
+      const brightness = Math.max(0.3, (wavePhase + 1.0) * 0.5);
+
+      ctx.fillStyle = isGen ? color_active : baseColor;
+      ctx.globalAlpha = brightness * blinkDim;
+      ctx.fillRect(i * colW, 0, colW + 1, H);
+    }
+    ctx.restore();
+  }
+
+  // --- Visual Mode 5: CIRCULAR GAUGE ---
+  function drawCircularGauge(pct, isGen, blinkDim) {
+    const centerX = W / 2;
+    const centerY = H / 2;
+    const radius = Math.min(centerX, centerY) - 15;
+    const baseColor = getQuotaColor(pct);
+    const startAngle = -Math.PI / 2;
+    const endAngle = startAngle + (Math.PI * 2 * (pct / 100.0));
+
+    ctx.save();
+    // Background circle track
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+    ctx.lineWidth = 18;
+    ctx.strokeStyle = color_bg;
+    ctx.stroke();
+
+    // Active arc
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, radius, startAngle, endAngle);
+    ctx.lineWidth = 18;
+    ctx.strokeStyle = baseColor;
+    ctx.globalAlpha = blinkDim;
+    ctx.stroke();
+
+    if (isGen && enable_gen_fx) {
+      // Glow dot at the head of the arc
+      const headX = centerX + Math.cos(endAngle) * radius;
+      const headY = centerY + Math.sin(endAngle) * radius;
+      ctx.beginPath();
+      ctx.arc(headX, headY, 14, 0, Math.PI * 2);
+      ctx.fillStyle = color_active;
+      ctx.globalAlpha = (Math.sin(animClock * 10) * 0.5 + 0.5) * 0.8 + 0.2;
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // --- Visual Mode 6: SPLIT ZONES ---
+  function drawSplitZones(pct, isGen, blinkDim) {
+    // Left 70% is Progress Bar, Right 30% is Active AI Status Light
+    const barW = Math.round(W * 0.75);
+    const statusW = W - barW;
+    const fraction = pct / 100.0;
+    const fillW = Math.round(barW * fraction);
+
+    ctx.save();
+    // Progress Zone
+    ctx.fillStyle = getQuotaColor(pct);
+    ctx.fillRect(0, 0, fillW, H);
+
+    // Divider Line
+    ctx.fillStyle = "#111111";
+    ctx.fillRect(barW - 2, 0, 4, H);
+
+    // Status Indicator Zone
+    ctx.fillStyle = isGen ? color_active : (pct > 20 ? color_high : color_low);
+    const pulse = isGen ? (Math.sin(animClock * 12) * 0.4 + 0.6) : 0.8;
+    ctx.globalAlpha = pulse * blinkDim;
+    ctx.fillRect(barW, 0, statusW, H);
+
+    ctx.restore();
+  }
+
+  // --- Generation Dynamic Overlay FX ---
+  function drawGenOverlay(x, y, w, h) {
+    ctx.save();
+    if (gen_fx_style === "Pulse Glow") {
+      const pulse = (Math.sin(animClock * 15) * 0.5 + 0.5) * 0.7;
+      ctx.fillStyle = color_active;
+      ctx.globalAlpha = pulse;
+      ctx.fillRect(x, y, w, h);
+    } else if (gen_fx_style === "Matrix Stream") {
+      const sweepX = (waveOffset % w) + x;
+      const sweepGrad = ctx.createLinearGradient(sweepX - 40, y, sweepX + 40, y);
+      sweepGrad.addColorStop(0, "rgba(0, 212, 255, 0)");
+      sweepGrad.addColorStop(0.5, color_active);
+      sweepGrad.addColorStop(1, "rgba(0, 212, 255, 0)");
+      ctx.fillStyle = sweepGrad;
+      ctx.fillRect(x, y, w, h);
+    } else if (gen_fx_style === "Neon Surge") {
+      const surgeY = (Math.sin(animClock * 8) * 0.5 + 0.5) * h;
+      ctx.fillStyle = color_active;
+      ctx.globalAlpha = 0.5;
+      ctx.fillRect(x, surgeY, w, 8);
+    } else if (gen_fx_style === "Strobe") {
+      const strobeOn = Math.floor(animClock * 20) % 2 === 0;
+      if (strobeOn) {
+        ctx.fillStyle = color_active;
+        ctx.globalAlpha = 0.6;
+        ctx.fillRect(x, y, w, h);
+      }
+    }
+    ctx.restore();
+  }
+
+  // --- Text HUD Overlay ---
+  function drawHUD(pct, isGen) {
+    ctx.save();
+    ctx.font = "bold 16px monospace";
+    ctx.fillStyle = "#FFFFFF";
+    ctx.shadowColor = "#000000";
+    ctx.shadowBlur = 4;
+
+    const pctText = `${Math.round(pct)}%`;
+    ctx.fillText(pctText, 12, 24);
+
+    if (isGen) {
+      ctx.font = "bold 12px monospace";
+      ctx.fillStyle = color_active;
+      ctx.fillText("● GENERATING", 12, 42);
+    } else if (state.provider) {
+      ctx.font = "11px monospace";
+      ctx.fillStyle = "#A0A5B5";
+      ctx.fillText(state.provider, 12, 42);
+    }
+
+    if (state.daily_tokens > 0) {
+      ctx.font = "11px monospace";
+      ctx.fillStyle = "#8892B0";
+      const formatted = state.daily_tokens >= 1000000 
+        ? `${(state.daily_tokens / 1000000).toFixed(1)}M tok`
+        : `${(state.daily_tokens / 1000).toFixed(1)}K tok`;
+      ctx.fillText(formatted, W - 80, 24);
+    }
+
+    ctx.restore();
+  }
+
+  // Start Animation Loop
+  window.requestAnimationFrame(update);
+</script>
+</html>
