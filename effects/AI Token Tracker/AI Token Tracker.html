@@ -1,79 +1,34 @@
-<!DOCTYPE html>
-<html lang="en">
 <head>
   <title>AI Token Tracker</title>
-  <meta description="Real-time AI Token Usage & Quota Visualizer for SignalRGB. Tracks Claude Code, Codex, Antigravity, Cursor, Gemini CLI, Grok, Copilot, and API limits across all your RGB hardware." />
+  <meta description="Real-time AI Token Usage & Quota Visualizer for SignalRGB. Tracks Antigravity, Claude Code, Codex, Cursor, Gemini, Copilot, Grok, and API limits across all your RGB hardware." />
   <meta publisher="SignalRGB AI Integration" />
 
-  <!-- 1. DISPLAY & ANIMATION MODE -->
-  <meta
-    property="display_mode"
-    label="Visual Mode"
-    type="combobox"
-    values="Progress Bar,Solid Gradient,Active Pulse,Matrix Wave,Circular Gauge,Split Zones"
-    default="Progress Bar"
-  />
-  <meta
-    property="bar_direction"
-    label="Bar Orientation"
-    type="combobox"
-    values="Left to Right,Right to Left,Bottom to Top,Top to Bottom,Center Out"
-    default="Left to Right"
-  />
+  <meta property="display_mode" label="Visual Mode" tooltip="Select the visual lighting style." type="combobox" values="Progress Bar,Solid Gradient,Active Pulse,Matrix Wave,Circular Gauge,Split Zones" default="Progress Bar" />
+  <meta property="bar_direction" label="Bar Orientation" tooltip="Direction of the progress bar." type="combobox" values="Left to Right,Right to Left,Bottom to Top,Top to Bottom,Center Out" default="Left to Right" />
 
-  <!-- 2. COLOR PALETTE -->
-  <meta property="color_high" label="High / Full Quota Color" type="color" default="#00FF66" />
-  <meta property="color_med" label="Medium Quota Color" type="color" default="#FFB700" />
-  <meta property="color_low" label="Low / Critical Color" type="color" default="#FF0044" />
-  <meta property="color_active" label="Active Generation Color" type="color" default="#00D4FF" />
-  <meta property="color_bg" label="Background / Empty Color" type="color" default="#0A0B12" />
+  <meta property="color_high" label="High Quota Color" tooltip="Color when token quota is full or high." type="color" min="0" max="360" default="#00FF66" />
+  <meta property="color_med" label="Medium Quota Color" tooltip="Color when token quota is medium." type="color" min="0" max="360" default="#FFB700" />
+  <meta property="color_low" label="Low Quota Color" tooltip="Color when token quota is low or depleted." type="color" min="0" max="360" default="#FF0044" />
+  <meta property="color_active" label="Active Gen Color" tooltip="Accent color when AI is actively generating text." type="color" min="0" max="360" default="#00D4FF" />
+  <meta property="color_bg" label="Background Color" tooltip="Background or empty bar color." type="color" min="0" max="360" default="#0A0B12" />
 
-  <!-- 3. ACTIVE GENERATION & DYNAMICS -->
-  <meta property="enable_gen_fx" label="Enable Generation FX" type="boolean" default="1" />
-  <meta
-    property="gen_fx_style"
-    label="Generation FX Style"
-    type="combobox"
-    values="Pulse Glow,Matrix Stream,Neon Surge,Strobe"
-    default="Pulse Glow"
-  />
-  <meta property="active_speed" label="Animation Speed" type="number" min="1" max="100" default="50" />
-  <meta property="smoothing" label="Smoothing Alpha" type="number" min="0" max="100" default="75" />
+  <meta property="enable_gen_fx" label="Enable Gen FX" tooltip="Enable active animation when AI is writing." type="boolean" default="1" />
+  <meta property="gen_fx_style" label="Gen FX Style" tooltip="Animation style during token generation." type="combobox" values="Pulse Glow,Matrix Stream,Neon Surge,Strobe" default="Pulse Glow" />
+  <meta property="active_speed" label="Animation Speed" tooltip="Speed of animations." type="number" min="1" max="100" default="50" />
+  <meta property="smoothing" label="Smoothing" tooltip="Smoothness of transition changes." type="number" min="0" max="100" default="75" />
 
-  <!-- 4. ALARMS & THRESHOLDS -->
-  <meta property="enable_warning_blink" label="Flash On Low Quota" type="boolean" default="1" />
-  <meta property="warning_threshold" label="Warning Threshold (%)" type="number" min="5" max="50" default="20" />
-  <meta property="critical_threshold" label="Critical Threshold (%)" type="number" min="1" max="25" default="10" />
-  <meta property="show_hud" label="Draw Text HUD Overlay" type="boolean" default="1" />
+  <meta property="enable_warning_blink" label="Low Quota Flash" tooltip="Flash LEDs when quota drops below warning threshold." type="boolean" default="1" />
+  <meta property="warning_threshold" label="Warning Threshold" tooltip="Percentage threshold to trigger warning." type="number" min="5" max="50" default="20" />
+  <meta property="critical_threshold" label="Critical Threshold" tooltip="Percentage threshold to trigger critical alarm." type="number" min="1" max="25" default="10" />
+  <meta property="show_hud" label="Draw Text HUD" tooltip="Show percentage and provider text on canvas." type="boolean" default="1" />
 
-  <!-- 5. TEST & SIMULATION CONTROLS -->
-  <meta property="test_mode" label="[TEST] Enable Manual Test Mode" type="boolean" default="0" />
-  <meta property="test_percentage" label="[TEST] Simulated Remaining (%)" type="number" min="0" max="100" default="70" />
-  <meta property="test_generating" label="[TEST] Simulate Active Generation" type="boolean" default="0" />
+  <meta property="test_mode" label="Test Mode" tooltip="Enable manual testing directly in SignalRGB." type="boolean" default="0" />
+  <meta property="test_percentage" label="Test Percentage" tooltip="Simulated percentage for testing." type="number" min="0" max="100" default="70" />
+  <meta property="test_generating" label="Test Generating" tooltip="Simulate active generation in test mode." type="boolean" default="0" />
 </head>
 
-<style>
-  * {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-  }
-  body {
-    overflow: hidden;
-    background: #000;
-    width: 100vw;
-    height: 100vh;
-  }
-  #canvas {
-    width: 100%;
-    height: 100%;
-    object-fit: fill;
-    image-rendering: pixelated;
-  }
-</style>
-
-<body>
-  <canvas id="canvas" width="320" height="200"></canvas>
+<body style="margin: 0; padding: 0; background: #000; overflow: hidden; width: 100vw; height: 100vh;">
+  <canvas id="exCanvas" width="320" height="200" style="width: 100%; height: 100%; object-fit: fill; image-rendering: pixelated;"></canvas>
 </body>
 
 <script>
@@ -97,32 +52,30 @@
   var test_percentage      = typeof test_percentage      !== "undefined" ? test_percentage      : 70;
   var test_generating      = typeof test_generating      !== "undefined" ? test_generating      : 0;
 
-  const canvas = document.getElementById("canvas");
+  const canvas = document.getElementById("exCanvas");
   const ctx = canvas.getContext("2d", { willReadFrequently: false });
-  const W = canvas.width;
-  const H = canvas.height;
+  const W = 320;
+  const H = 200;
 
   // Live State from Python Bridge or Test Mode
   let state = {
-    percentage: 100,          // 0 to 100% remaining (or inverted for usage)
+    percentage: 100,
     used_tokens: 0,
     remaining_tokens: 0,
     daily_tokens: 0,
     is_generating: false,
     tokens_per_sec: 0,
     provider: "Antigravity",
-    model: "gemini-3.7-flash",
+    model: "Gemini",
     last_update_time: Date.now()
   };
 
-  // Smoothed runtime values for fluid 60 FPS transitions
   let currentPercentage = 100;
   let animClock = 0;
   let waveOffset = 0;
   let blinkPhase = 0;
 
   // SignalRGB Canvas API Event Handler
-  // Receives HTTP POST events from Python bridge: http://localhost:16034/canvas/event
   function onCanvasApiEvent(sender, event) {
     try {
       let data = event;
@@ -130,7 +83,6 @@
         try {
           data = JSON.parse(event);
         } catch (e) {
-          // If raw event string e.g. "active" or "percent:75"
           if (event.startsWith("percent:")) {
             data = { percentage: parseFloat(event.split(":")[1]) };
           } else if (event === "generating_start") {
@@ -159,23 +111,12 @@
     }
   }
 
-  // Also support object-signature onCanvasApiEvent(apiEvent)
-  function handleApiEvent(apiEvent) {
-    if (!apiEvent) return;
-    if (apiEvent.sender && apiEvent.event) {
-      onCanvasApiEvent(apiEvent.sender, apiEvent.event);
-    } else {
-      onCanvasApiEvent("bridge", apiEvent);
-    }
-  }
-
-  // Color Utility Helpers
   function hexToRgb(hex) {
-    let clean = hex.replace("#", "");
+    let clean = String(hex).replace("#", "");
     if (clean.length === 3) {
       clean = clean.split("").map(c => c + c).join("");
     }
-    const num = parseInt(clean, 16);
+    const num = parseInt(clean, 16) || 0;
     return {
       r: (num >> 16) & 255,
       g: (num >> 8) & 255,
@@ -193,37 +134,29 @@
     return `rgb(${r}, ${g}, ${b})`;
   }
 
-  // Calculates 3-stop gradient color (High -> Medium -> Low)
   function getQuotaColor(pct) {
     pct = Math.max(0, Math.min(100, pct));
     if (pct >= 50) {
-      // 50% to 100%: Lerp between Med and High
       const t = (pct - 50) / 50;
       return lerpColor(color_med, color_high, t);
     } else {
-      // 0% to 50%: Lerp between Low and Med
       const t = pct / 50;
       return lerpColor(color_low, color_med, t);
     }
   }
 
-  // Main Render Loop
   function update() {
-    // 1. Compute effective state (Test Mode override vs Live Bridge)
     let targetPct = test_mode ? Number(test_percentage) : state.percentage;
     let isGen = test_mode ? Boolean(test_generating) : state.is_generating;
 
-    // 2. Exponential Moving Average Smoothing
     const smoothFactor = Math.max(0.02, 1.0 - (smoothing / 100.0) * 0.95);
     currentPercentage += (targetPct - currentPercentage) * smoothFactor;
 
-    // 3. Time increments for animations
     const speedFactor = (active_speed / 50.0) * 0.05;
     animClock += speedFactor;
     waveOffset += speedFactor * 40;
     blinkPhase += 0.1;
 
-    // 4. Critical / Low Warning Blink Calculation
     let isWarning = currentPercentage <= Number(warning_threshold);
     let isCritical = currentPercentage <= Number(critical_threshold);
     let blinkDim = 1.0;
@@ -232,11 +165,9 @@
       blinkDim = (Math.sin(animClock * 30 * blinkSpeed) + 1.0) * 0.4 + 0.2;
     }
 
-    // 5. Clear canvas with background color
     ctx.fillStyle = color_bg;
     ctx.fillRect(0, 0, W, H);
 
-    // 6. Execute chosen visual mode
     switch (display_mode) {
       case "Progress Bar":
         drawProgressBar(currentPercentage, isGen, blinkDim);
@@ -261,7 +192,6 @@
         break;
     }
 
-    // 7. Optional Text HUD Overlay
     if (show_hud) {
       drawHUD(currentPercentage, isGen);
     }
@@ -269,11 +199,9 @@
     window.requestAnimationFrame(update);
   }
 
-  // --- Visual Mode 1: PROGRESS BAR ---
   function drawProgressBar(pct, isGen, blinkDim) {
     const fraction = pct / 100.0;
     const baseColor = getQuotaColor(pct);
-
     ctx.save();
     let grad;
 
@@ -285,7 +213,6 @@
       ctx.fillStyle = grad;
       ctx.fillRect(0, 0, fillW, H);
 
-      // Active generation surge wave
       if (isGen && enable_gen_fx && fillW > 0) {
         drawGenOverlay(0, 0, fillW, H);
       }
@@ -327,9 +254,6 @@
     } else if (bar_direction === "Center Out") {
       const fillW = Math.round(W * fraction);
       const startX = Math.round((W - fillW) / 2);
-      grad = ctx.createLinearGradient(W / 2, 0, W / 2 + fillW / 2, 0);
-      grad.addColorStop(0, baseColor);
-      grad.addColorStop(1, getQuotaColor(0));
       ctx.fillStyle = baseColor;
       ctx.fillRect(startX, 0, fillW, H);
 
@@ -337,11 +261,9 @@
         drawGenOverlay(startX, 0, fillW, H);
       }
     }
-
     ctx.restore();
   }
 
-  // --- Visual Mode 2: SOLID GRADIENT ---
   function drawSolidGradient(pct, isGen, blinkDim) {
     let baseColor = getQuotaColor(pct);
     ctx.save();
@@ -355,7 +277,6 @@
     ctx.restore();
   }
 
-  // --- Visual Mode 3: ACTIVE PULSE ---
   function drawActivePulse(pct, isGen, blinkDim) {
     const baseColor = getQuotaColor(pct);
     const pulseRate = isGen ? 8 : 2;
@@ -372,7 +293,6 @@
     ctx.restore();
   }
 
-  // --- Visual Mode 4: MATRIX WAVE ---
   function drawMatrixWave(pct, isGen, blinkDim) {
     const baseColor = getQuotaColor(pct);
     const waveCols = 20;
@@ -397,7 +317,6 @@
     ctx.restore();
   }
 
-  // --- Visual Mode 5: CIRCULAR GAUGE ---
   function drawCircularGauge(pct, isGen, blinkDim) {
     const centerX = W / 2;
     const centerY = H / 2;
@@ -407,14 +326,12 @@
     const endAngle = startAngle + (Math.PI * 2 * (pct / 100.0));
 
     ctx.save();
-    // Background circle track
     ctx.beginPath();
     ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
     ctx.lineWidth = 18;
     ctx.strokeStyle = color_bg;
     ctx.stroke();
 
-    // Active arc
     ctx.beginPath();
     ctx.arc(centerX, centerY, radius, startAngle, endAngle);
     ctx.lineWidth = 18;
@@ -423,7 +340,6 @@
     ctx.stroke();
 
     if (isGen && enable_gen_fx) {
-      // Glow dot at the head of the arc
       const headX = centerX + Math.cos(endAngle) * radius;
       const headY = centerY + Math.sin(endAngle) * radius;
       ctx.beginPath();
@@ -435,33 +351,26 @@
     ctx.restore();
   }
 
-  // --- Visual Mode 6: SPLIT ZONES ---
   function drawSplitZones(pct, isGen, blinkDim) {
-    // Left 70% is Progress Bar, Right 30% is Active AI Status Light
     const barW = Math.round(W * 0.75);
     const statusW = W - barW;
     const fraction = pct / 100.0;
     const fillW = Math.round(barW * fraction);
 
     ctx.save();
-    // Progress Zone
     ctx.fillStyle = getQuotaColor(pct);
     ctx.fillRect(0, 0, fillW, H);
 
-    // Divider Line
     ctx.fillStyle = "#111111";
     ctx.fillRect(barW - 2, 0, 4, H);
 
-    // Status Indicator Zone
     ctx.fillStyle = isGen ? color_active : (pct > 20 ? color_high : color_low);
     const pulse = isGen ? (Math.sin(animClock * 12) * 0.4 + 0.6) : 0.8;
     ctx.globalAlpha = pulse * blinkDim;
     ctx.fillRect(barW, 0, statusW, H);
-
     ctx.restore();
   }
 
-  // --- Generation Dynamic Overlay FX ---
   function drawGenOverlay(x, y, w, h) {
     ctx.save();
     if (gen_fx_style === "Pulse Glow") {
@@ -493,7 +402,6 @@
     ctx.restore();
   }
 
-  // --- Text HUD Overlay ---
   function drawHUD(pct, isGen) {
     ctx.save();
     ctx.font = "bold 16px monospace";
@@ -522,11 +430,8 @@
         : `${(state.daily_tokens / 1000).toFixed(1)}K tok`;
       ctx.fillText(formatted, W - 80, 24);
     }
-
     ctx.restore();
   }
 
-  // Start Animation Loop
   window.requestAnimationFrame(update);
 </script>
-</html>
