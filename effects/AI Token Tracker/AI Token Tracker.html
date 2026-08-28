@@ -1,19 +1,40 @@
 <head>
   <title>AI Token Tracker</title>
-  <meta description="Real-time AI Token Usage & Quota Visualizer for SignalRGB. Tracks Antigravity, Claude Code, Codex, Cursor, Gemini, Copilot, Grok, and API limits across all your RGB hardware." />
-  <meta publisher="SignalRGB AI Integration" />
+  <meta description="Real-time AI Token Usage and Quota Visualizer for SignalRGB. Tracks Antigravity, Claude Code, Codex, Cursor, Gemini, Copilot, Grok, and API limits across all your RGB hardware." />
+  <meta publisher="WhirlwindFX" />
 
-  <meta property="display_mode" label="Visual Mode" tooltip="Select the visual lighting style." type="combobox" values="Progress Bar,Solid Gradient,Active Pulse,Matrix Wave,Circular Gauge,Split Zones" default="Progress Bar" />
-  <meta property="bar_direction" label="Bar Orientation" tooltip="Direction of the progress bar." type="combobox" values="Left to Right,Right to Left,Bottom to Top,Top to Bottom,Center Out" default="Left to Right" />
+  <meta
+    property="display_mode"
+    label="Visual Mode"
+    tooltip="Select the visual lighting style."
+    type="combobox"
+    values="Progress Bar,Solid Gradient,Active Pulse,Matrix Wave,Circular Gauge,Split Zones"
+    default="Progress Bar"
+  />
+  <meta
+    property="bar_direction"
+    label="Bar Orientation"
+    tooltip="Direction of the progress bar."
+    type="combobox"
+    values="Left to Right,Right to Left,Bottom to Top,Top to Bottom,Center Out"
+    default="Left to Right"
+  />
 
-  <meta property="color_high" label="High Quota Color" tooltip="Color when token quota is full or high." type="color" min="0" max="360" default="#00FF66" />
+  <meta property="color_high" label="High Quota Color" tooltip="Color when token quota is high." type="color" min="0" max="360" default="#00FF66" />
   <meta property="color_med" label="Medium Quota Color" tooltip="Color when token quota is medium." type="color" min="0" max="360" default="#FFB700" />
-  <meta property="color_low" label="Low Quota Color" tooltip="Color when token quota is low or depleted." type="color" min="0" max="360" default="#FF0044" />
-  <meta property="color_active" label="Active Gen Color" tooltip="Accent color when AI is actively generating text." type="color" min="0" max="360" default="#00D4FF" />
+  <meta property="color_low" label="Low Quota Color" tooltip="Color when token quota is low." type="color" min="0" max="360" default="#FF0044" />
+  <meta property="color_active" label="Active Gen Color" tooltip="Accent color when AI is actively writing." type="color" min="0" max="360" default="#00D4FF" />
   <meta property="color_bg" label="Background Color" tooltip="Background or empty bar color." type="color" min="0" max="360" default="#0A0B12" />
 
   <meta property="enable_gen_fx" label="Enable Gen FX" tooltip="Enable active animation when AI is writing." type="boolean" default="1" />
-  <meta property="gen_fx_style" label="Gen FX Style" tooltip="Animation style during token generation." type="combobox" values="Pulse Glow,Matrix Stream,Neon Surge,Strobe" default="Pulse Glow" />
+  <meta
+    property="gen_fx_style"
+    label="Gen FX Style"
+    tooltip="Animation style during token generation."
+    type="combobox"
+    values="Pulse Glow,Matrix Stream,Neon Surge,Strobe"
+    default="Pulse Glow"
+  />
   <meta property="active_speed" label="Animation Speed" tooltip="Speed of animations." type="number" min="1" max="100" default="50" />
   <meta property="smoothing" label="Smoothing" tooltip="Smoothness of transition changes." type="number" min="0" max="100" default="75" />
 
@@ -32,7 +53,7 @@
 </body>
 
 <script>
-  // Safe variable initialization in case host engine hasn't injected globals yet
+  // Global variables injected by SignalRGB from <meta property="...">
   var display_mode         = typeof display_mode         !== "undefined" ? display_mode         : "Progress Bar";
   var bar_direction        = typeof bar_direction        !== "undefined" ? bar_direction        : "Left to Right";
   var color_high           = typeof color_high           !== "undefined" ? color_high           : "#00FF66";
@@ -56,6 +77,26 @@
   const ctx = canvas.getContext("2d", { willReadFrequently: false });
   const W = 320;
   const H = 200;
+
+  // Change notification handlers required by SignalRGB
+  function ondisplay_modeChanged() {}
+  function onbar_directionChanged() {}
+  function oncolor_highChanged() {}
+  function oncolor_medChanged() {}
+  function oncolor_lowChanged() {}
+  function oncolor_activeChanged() {}
+  function oncolor_bgChanged() {}
+  function onenable_gen_fxChanged() {}
+  function ongen_fx_styleChanged() {}
+  function onactive_speedChanged() {}
+  function onsmoothingChanged() {}
+  function onenable_warning_blinkChanged() {}
+  function onwarning_thresholdChanged() {}
+  function oncritical_thresholdChanged() {}
+  function onshow_hudChanged() {}
+  function ontest_modeChanged() {}
+  function ontest_percentageChanged() {}
+  function ontest_generatingChanged() {}
 
   // Live State from Python Bridge or Test Mode
   let state = {
