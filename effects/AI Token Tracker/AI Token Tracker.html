@@ -125,6 +125,39 @@
   let debugRaw = "none";
   let debugParsed = "none";
 
+  function unescapeHtml(str) {
+    if (typeof str !== "string") return str;
+    let s = str;
+    for (let i = 0; i < 3; i++) {
+      if (!s.includes("&")) break;
+      s = s
+        .replace(/&quot;/g, '"')
+        .replace(/&apos;/g, "'")
+        .replace(/&#39;/g, "'")
+        .replace(/&#34;/g, '"')
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/&amp;/g, "&");
+    }
+    return s;
+  }
+
+  function safeUrlDecode(str) {
+    if (typeof str !== "string") return str;
+    let s = str;
+    for (let i = 0; i < 3; i++) {
+      if (!s.includes("%")) break;
+      try {
+        let dec = decodeURIComponent(s);
+        if (dec === s) break;
+        s = dec;
+      } catch (e) {
+        break;
+      }
+    }
+    return s;
+  }
+
   // SignalRGB Canvas API Event Handler - supports all signature variations
   function onCanvasApiEvent(arg1, arg2) {
     try {
@@ -133,9 +166,15 @@
       console.log("[AI Token Tracker] onCanvasApiEvent received:", typeof arg1, arg1);
       let data = arg1;
 
-      // Handle double / triple stringified payloads or wrappers (event, data, payload)
+      // Handle HTML-escaped entities (&quot;), URL-encoding (%20), double / triple stringified payloads or wrappers
       for (let i = 0; i < 5; i++) {
         if (typeof data === "string") {
+          if (data.includes("&")) {
+            data = unescapeHtml(data);
+          }
+          if (data.includes("%")) {
+            data = safeUrlDecode(data);
+          }
           try {
             let parsed = JSON.parse(data);
             data = parsed;
