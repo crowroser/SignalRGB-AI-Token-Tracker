@@ -121,7 +121,7 @@ class SignalRGBClient:
         query = urllib.parse.urlencode({
             "sender": self.sender,
             "event": json_str
-        })
+        }, quote_via=urllib.parse.quote)
         url = f"{self.base_url}?{query}"
 
         try:

@@ -121,42 +121,51 @@
   let waveOffset = 0;
   let blinkPhase = 0;
 
+  let debugCalls = 0;
+  let debugRaw = "none";
+  let debugParsed = "none";
+
   // SignalRGB Canvas API Event Handler - supports all signature variations
   function onCanvasApiEvent(arg1, arg2) {
     try {
+      debugCalls++;
+      debugRaw = typeof arg1 + ":" + (typeof arg1 === "object" ? JSON.stringify(arg1) : String(arg1));
       console.log("[AI Token Tracker] onCanvasApiEvent received:", typeof arg1, arg1);
       let data = arg1;
 
-      // 1. If arg1 is a string, parse it
-      if (typeof data === "string") {
-        try {
-          data = JSON.parse(data);
-        } catch (e) {
-          if (data.startsWith("percent:")) {
-            data = { percentage: parseFloat(data.split(":")[1]) };
-          } else if (data === "generating_start") {
-            data = { is_generating: true };
-          } else if (data === "generating_stop") {
-            data = { is_generating: false };
-          }
-        }
-      }
-
-      // 2. If data is wrapped in { sender: ..., event: ... }
-      if (data && typeof data === "object" && data.event !== undefined) {
-        if (typeof data.event === "string") {
+      // Handle double / triple stringified payloads or wrappers (event, data, payload)
+      for (let i = 0; i < 5; i++) {
+        if (typeof data === "string") {
           try {
-            data = JSON.parse(data.event);
+            let parsed = JSON.parse(data);
+            data = parsed;
           } catch (e) {
+            if (data.startsWith("percent:")) {
+              data = { percentage: parseFloat(data.split(":")[1]) };
+            } else if (data === "generating_start") {
+              data = { is_generating: true };
+            } else if (data === "generating_stop") {
+              data = { is_generating: false };
+            }
+            break;
+          }
+        } else if (data && typeof data === "object") {
+          if (data.event !== undefined) {
             data = data.event;
+          } else if (data.data !== undefined) {
+            data = data.data;
+          } else if (data.payload !== undefined) {
+            data = data.payload;
+          } else {
+            break;
           }
         } else {
-          data = data.event;
+          break;
         }
       }
 
-      // 3. If called as onCanvasApiEvent(sender, event)
-      if (arg2 !== undefined) {
+      // Check arg2 as fallback
+      if (arg2 !== undefined && (typeof data !== "object" || data === null || data.percentage === undefined)) {
         let ev = arg2;
         if (typeof ev === "string") {
           try { ev = JSON.parse(ev); } catch (e) {}
@@ -166,7 +175,9 @@
         }
       }
 
-      // 4. Update state
+      debugParsed = typeof data + ":" + (typeof data === "object" ? JSON.stringify(data) : String(data));
+
+      // Update state
       if (typeof data === "object" && data !== null) {
         if (data.percentage !== undefined) {
           state.percentage = Math.max(0, Math.min(100, Number(data.percentage)));
@@ -184,6 +195,7 @@
         console.log("[AI Token Tracker] State updated successfully to " + state.percentage + "%", state.model);
       }
     } catch (err) {
+      debugParsed = "ERR:" + err.message;
       console.error("[AI Token Tracker] Error processing CanvasApiEvent:", err);
     }
   }
@@ -553,6 +565,11 @@
       ctx.fillStyle = !isGemActive ? "#FFB700" : "#55607A";
       ctx.fillText(`🟣 CLD:${cRem}%`, 110, H - 12);
     }
+
+    // Telemetry Debug Overlay
+    ctx.font = "9px monospace";
+    ctx.fillStyle = "#00FFFF";
+    ctx.fillText(`[RX:${debugCalls}] ${debugParsed.substring(0, 32)}`, 12, H - 26);
 
     ctx.restore();
   }
