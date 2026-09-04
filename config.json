@@ -1,6 +1,8 @@
 {
   "daily_token_budget": 1000000,
   "five_hour_token_quota": 300000,
+  "gemini_5h_quota": 1150000,
+  "claude_5h_quota": 70000,
   "mode": "remaining",
   "poll_interval_seconds": 1.0,
   "signalrgb_host": "localhost",

@@ -39,7 +39,7 @@ jobs:
         shell: pwsh
         run: |
           Copy-Item -Path "effects" -Destination "dist" -Recurse -Force
-          Copy-Item -Path "install.ps1", "install.bat", "setup.ps1", "setup.bat", "config.json", "README.md" -Destination "dist" -Force -ErrorAction SilentlyContinue
+          Copy-Item -Path "install.ps1", "install.bat", "setup.ps1", "setup.bat", "start.bat", "start_background.bat", "config.json", "README.md", "README_TR.md", "LICENSE" -Destination "dist" -Force -ErrorAction SilentlyContinue
 
       - name: Create ZIP archive
         shell: pwsh

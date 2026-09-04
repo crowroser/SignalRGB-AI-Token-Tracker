@@ -16,6 +16,29 @@ import urllib.request
 import urllib.parse
 import ctypes
 import argparse
+import http.server
+import threading
+
+class NullWriter:
+    def write(self, *args, **kwargs): pass
+    def flush(self): pass
+
+if sys.stdout is None:
+    sys.stdout = NullWriter()
+elif hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
+if sys.stderr is None:
+    sys.stderr = NullWriter()
+elif hasattr(sys.stderr, "reconfigure"):
+    try:
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Optional, List, Dict
@@ -130,13 +153,36 @@ class BaseProvider:
 # =====================================================================
 
 class AntigravityProvider(BaseProvider):
-    def __init__(self):
+    MODEL_PATTERN = re.compile(
+        r"Model Selection[`'\"']?\s+from\s+[^`\n\r]+?\s+to\s+[`'\"']?([^`\n\r<]+)",
+        re.I
+    )
+
+    def __init__(self, gemini_quota_5h: int = 1_150_000, claude_quota_5h: int = 70_000, mode: str = "remaining"):
         super().__init__("Antigravity")
         self.user_profile = os.environ.get("USERPROFILE", "")
         self.cli_brain_path = os.path.join(self.user_profile, ".gemini", "antigravity-cli", "brain")
         self.ide_dbs_path = os.path.join(self.user_profile, ".gemini", "antigravity-ide", "conversations")
         self.core_dbs_path = os.path.join(self.user_profile, ".gemini", "antigravity", "conversations")
         self._last_active_threshold_sec = 6.0
+        self.gemini_quota_5h = gemini_quota_5h
+        self.claude_quota_5h = claude_quota_5h
+        self.mode = mode
+
+    @staticmethod
+    def _classify_model_family(model_name: str) -> str:
+        low = model_name.lower()
+        if any(k in low for k in ["claude", "opus", "sonnet", "haiku", "anthropic", "gpt", "o1", "o3"]):
+            return "Claude"
+        return "Gemini"
+
+    @staticmethod
+    def _clean_model_name(raw: str) -> str:
+        clean = re.split(r"(?:\.\s+|\s+No need|\s+Please|\s+Do not|<|`|\.\.\.)", raw, flags=re.I)[0].strip()
+        clean = clean.strip("`'\" .")
+        if not clean or clean == "..." or len(clean) < 3 or not re.search(r"[a-zA-Z]", clean):
+            return ""
+        return clean
 
     def is_available(self) -> bool:
         return (
@@ -148,18 +194,29 @@ class AntigravityProvider(BaseProvider):
     def scan(self) -> UsageSnapshot:
         snapshot = UsageSnapshot(provider_name="Antigravity")
         now = time.time()
-        today_date_str = datetime.now().strftime("%Y-%m-%d")
+        today_local_str = datetime.now().strftime("%Y-%m-%d")
+        today_utc_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        five_hour_cutoff = now - (5 * 3600)
 
-        # 1. Scan Antigravity CLI Transcripts
+        # 1. Scan Antigravity CLI Transcripts (use transcript_full to avoid double counting with transcript.jsonl)
         transcript_pattern = os.path.join(
-            self.cli_brain_path, "*", ".system_generated", "logs", "transcript*.jsonl"
+            self.cli_brain_path, "*", ".system_generated", "logs", "transcript_full.jsonl"
         )
         transcript_files = glob.glob(transcript_pattern)
+        if not transcript_files:
+            transcript_files = glob.glob(
+                os.path.join(self.cli_brain_path, "*", ".system_generated", "logs", "transcript.jsonl")
+            )
 
         latest_mtime = 0.0
-        daily_chars = 0
-        five_hour_chars = 0
-        five_hour_cutoff = now - (5 * 3600)
+        latest_model_switch_iso = ""
+        latest_model_switch_time = 0.0
+        latest_active_model = "Gemini Flash / Pro"
+
+        gemini_daily_chars = 0
+        gemini_5h_chars = 0
+        claude_daily_chars = 0
+        claude_5h_chars = 0
 
         for file_path in transcript_files:
             try:
@@ -167,50 +224,130 @@ class AntigravityProvider(BaseProvider):
                 if mtime > latest_mtime:
                     latest_mtime = mtime
 
-                # Skip files older than 24 hours for daily tally
+                # Skip files older than 48 hours
                 if (now - mtime) > 86400 * 2:
                     continue
+
+                current_file_model = "Gemini Flash / Pro"
 
                 with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
                     for line in f:
                         line = line.strip()
                         if not line:
                             continue
+
+                        # Check for authentic model switch event inside system metadata
+                        if "<ADDITIONAL_METADATA>" in line and "Model Selection" in line:
+                            match = self.MODEL_PATTERN.search(line)
+                            if match:
+                                raw_model = match.group(1).strip()
+                                clean_name = self._clean_model_name(raw_model)
+                                if clean_name:
+                                    current_file_model = clean_name
+                                    try:
+                                        item_tmp = json.loads(line)
+                                        iso = item_tmp.get("created_at", "")
+                                    except Exception:
+                                        iso = ""
+                                    if iso and iso > latest_model_switch_iso:
+                                        latest_model_switch_iso = iso
+                                        latest_active_model = clean_name
+                                    elif not latest_model_switch_iso and mtime >= latest_model_switch_time:
+                                        latest_model_switch_time = mtime
+                                        latest_active_model = clean_name
+
                         try:
                             item = json.loads(line)
                             created_at_str = item.get("created_at", "")
-                            # Check if today
-                            if today_date_str in created_at_str:
-                                # Estimate token usage from text fields
-                                text_len = 0
-                                if "content" in item and item["content"]:
-                                    text_len += len(str(item["content"]))
-                                if "thinking" in item and item["thinking"]:
-                                    text_len += len(str(item["thinking"]))
-                                if "tool_calls" in item and item["tool_calls"]:
-                                    text_len += len(str(item["tool_calls"]))
-                                
-                                daily_chars += text_len
-                                if mtime >= five_hour_cutoff:
-                                    five_hour_chars += text_len
+                            if not created_at_str:
+                                continue
+
+                            try:
+                                item_ts = datetime.fromisoformat(created_at_str).timestamp()
+                            except Exception:
+                                item_ts = mtime
+
+                            text_len = 0
+                            if "content" in item and item["content"]:
+                                text_len += len(str(item["content"]))
+                            if "thinking" in item and item["thinking"]:
+                                text_len += len(str(item["thinking"]))
+                            if "tool_calls" in item and item["tool_calls"]:
+                                text_len += len(str(item["tool_calls"]))
+
+                            if text_len > 0:
+                                fam = self._classify_model_family(current_file_model)
+
+                                # 5-hour rolling sliding window (independent of calendar day)
+                                if item_ts >= five_hour_cutoff:
+                                    if fam == "Claude":
+                                        claude_5h_chars += text_len
+                                    else:
+                                        gemini_5h_chars += text_len
+
+                                # Daily tokens (matches local today or UTC today)
+                                if today_local_str in created_at_str or today_utc_str in created_at_str:
+                                    if fam == "Claude":
+                                        claude_daily_chars += text_len
+                                    else:
+                                        gemini_daily_chars += text_len
                         except Exception:
                             continue
             except Exception:
                 continue
 
         # Convert characters to tokens (approx 4 chars per token)
-        snapshot.daily_tokens = max(1, daily_chars // 4)
-        snapshot.five_hour_tokens = max(1, five_hour_chars // 4)
+        gemini_daily_tokens = max(0, gemini_daily_chars // 4)
+        gemini_5h_tokens = max(0, gemini_5h_chars // 4)
+        claude_daily_tokens = max(0, claude_daily_chars // 4)
+        claude_5h_tokens = max(0, claude_5h_chars // 4)
+
+        active_family = self._classify_model_family(latest_active_model)
+
+        gemini_percent_5h = min(100.0, (gemini_5h_tokens / self.gemini_quota_5h) * 100.0)
+        claude_percent_5h = min(100.0, (claude_5h_tokens / self.claude_quota_5h) * 100.0)
+
+        gemini_rem_pct = max(0.0, 100.0 - gemini_percent_5h)
+        claude_rem_pct = max(0.0, 100.0 - claude_percent_5h)
+
+        snapshot.daily_tokens = gemini_daily_tokens + claude_daily_tokens
+        snapshot.five_hour_tokens = claude_5h_tokens if active_family == "Claude" else gemini_5h_tokens
+        
+        # In remaining mode, five_hour_percent represents the active model's remaining quota percentage
+        if self.mode == "remaining":
+            snapshot.five_hour_percent = round(claude_rem_pct if active_family == "Claude" else gemini_rem_pct, 1)
+        else:
+            snapshot.five_hour_percent = round(claude_percent_5h if active_family == "Claude" else gemini_percent_5h, 1)
+
         snapshot.last_activity_time = latest_mtime
+        snapshot.model_name = latest_active_model
 
         # Active generation detection
         if (now - latest_mtime) <= self._last_active_threshold_sec:
             snapshot.is_active_now = True
 
-        # Compute 5h block percent based on typical quota (e.g. 1,000,000 tokens / 5h limit)
-        quota_5h = 1_000_000
-        snapshot.five_hour_percent = min(100.0, (snapshot.five_hour_tokens / quota_5h) * 100.0)
-        snapshot.model_name = "Gemini / Claude Pro"
+        # Attach rich dual model telemetry to snapshot.extra
+        snapshot.extra = {
+            "mode": self.mode,
+            "active_family": active_family,
+            "active_model": latest_active_model,
+            "gemini": {
+                "daily_tokens": gemini_daily_tokens,
+                "5h_tokens": gemini_5h_tokens,
+                "5h_quota": self.gemini_quota_5h,
+                "5h_percent": round(gemini_percent_5h, 1),
+                "remaining_percent": round(gemini_rem_pct, 1),
+                "percent_5h": round(gemini_percent_5h, 1),
+            },
+            "claude": {
+                "daily_tokens": claude_daily_tokens,
+                "5h_tokens": claude_5h_tokens,
+                "5h_quota": self.claude_quota_5h,
+                "5h_percent": round(claude_percent_5h, 1),
+                "remaining_percent": round(claude_rem_pct, 1),
+                "percent_5h": round(claude_percent_5h, 1),
+            }
+        }
 
         return snapshot
 
@@ -761,6 +898,8 @@ class OpenRouterProvider(BaseProvider):
 DEFAULT_CONFIG = {
     "daily_token_budget": 500000,
     "five_hour_token_quota": 200000,
+    "gemini_5h_quota": 1150000,
+    "claude_5h_quota": 70000,
     "mode": "remaining",  # "remaining" (100% down to 0%) or "usage" (0% up to 100%)
     "poll_interval_seconds": 1.0,
     "signalrgb_host": "localhost",
@@ -819,7 +958,11 @@ class TokenScanner:
     def __init__(self, config: Config):
         self.config = config
         self.providers: List[BaseProvider] = [
-            AntigravityProvider(),
+            AntigravityProvider(
+                gemini_quota_5h=getattr(config, "gemini_5h_quota", 1150000) or 1150000,
+                claude_quota_5h=getattr(config, "claude_5h_quota", 70000) or 70000,
+                mode=config.mode
+            ),
             ClaudeCodeProvider(),
             CodexProvider(),
             CursorProvider(),
@@ -844,7 +987,10 @@ class TokenScanner:
         is_generating_any = False
         active_provider_name = ""
         active_model_name = ""
+        active_provider_percent = None
         provider_details = {}
+
+        active_extra = {}
 
         for provider in self.available_providers:
             if provider.name not in self.config.active_providers:
@@ -858,14 +1004,19 @@ class TokenScanner:
                 provider_details[provider.name] = {
                     "daily": snapshot.daily_tokens,
                     "5h": snapshot.five_hour_tokens,
+                    "percent": snapshot.five_hour_percent,
                     "is_active": snapshot.is_active_now,
-                    "model": snapshot.model_name
+                    "model": snapshot.model_name,
+                    "extra": snapshot.extra
                 }
 
                 if snapshot.is_active_now:
                     is_generating_any = True
                     active_provider_name = snapshot.provider_name
                     active_model_name = snapshot.model_name
+                    active_extra = snapshot.extra
+                    if snapshot.five_hour_percent is not None:
+                        active_provider_percent = snapshot.five_hour_percent
             except Exception as e:
                 pass
 
@@ -880,21 +1031,33 @@ class TokenScanner:
         self._prev_daily_tokens = total_daily_tokens
         self._prev_scan_time = now
 
-        # Calculate percentage
-        budget = max(1, self.config.daily_token_budget)
-        used_ratio = total_daily_tokens / budget
-        
-        if self.config.mode == "usage":
-            percentage = min(100.0, max(0.0, used_ratio * 100.0))
-        else: # "remaining" mode
-            remaining_ratio = max(0.0, 1.0 - used_ratio)
-            percentage = min(100.0, max(0.0, remaining_ratio * 100.0))
-
-        remaining_tokens = max(0, budget - total_daily_tokens)
-
         # Fallback provider display
         if not active_provider_name and self.available_providers:
             active_provider_name = self.available_providers[0].name
+
+        if not active_model_name and self.available_providers:
+            for p in self.available_providers:
+                if p.name in provider_details and provider_details[p.name].get("model"):
+                    active_model_name = provider_details[p.name]["model"]
+                    active_extra = provider_details[p.name].get("extra", {})
+                    break
+
+        if active_provider_percent is None and active_provider_name in provider_details:
+            active_provider_percent = provider_details[active_provider_name].get("percent")
+
+        # Calculate percentage: prioritize provider-specific quota if present, else fallback to daily budget
+        budget = max(1, self.config.daily_token_budget)
+        if active_provider_percent is not None:
+            percentage = active_provider_percent
+        else:
+            used_ratio = total_daily_tokens / budget
+            if self.config.mode == "usage":
+                percentage = min(100.0, max(0.0, used_ratio * 100.0))
+            else: # "remaining" mode
+                remaining_ratio = max(0.0, 1.0 - used_ratio)
+                percentage = min(100.0, max(0.0, remaining_ratio * 100.0))
+
+        remaining_tokens = max(0, budget - total_daily_tokens)
 
         return {
             "percentage": round(percentage, 1),
@@ -908,7 +1071,8 @@ class TokenScanner:
             "provider": active_provider_name,
             "model": active_model_name,
             "providers_detected": len(self.available_providers),
-            "details": provider_details
+            "details": provider_details,
+            "extra": active_extra
         }
 
 
@@ -916,15 +1080,53 @@ class TokenScanner:
 # SignalRGB Client
 # =====================================================================
 
+class TokenHttpHandler(http.server.BaseHTTPRequestHandler):
+    """Serves real-time token metrics to the SignalRGB HTML canvas."""
+
+    def log_message(self, format, *args):
+        # Suppress standard logging to prevent cluttering the terminal
+        pass
+
+    def do_GET(self):
+        if self.path.startswith("/api/tokens"):
+            client_ref = getattr(self.server, "client_ref", None)
+            if client_ref:
+                client_ref.last_client_poll_time = time.time()
+                client_ref.is_connected = True
+                payload = client_ref.latest_data or {}
+            else:
+                payload = {}
+
+            data = json.dumps(payload).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "*")
+            self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def do_OPTIONS(self):
+        self.send_response(200)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "*")
+        self.end_headers()
+
+
 class SignalRGBClient:
-    """Bridges token data into SignalRGB via two methods:
-    1. Direct HTML state injection (Free + Pro) — rewrites the state defaults
-       inside the effect HTML so SignalRGB picks them up on every render reload.
-    2. Canvas API POST (Pro only) — sends events to onCanvasApiEvent.
-    Both methods run in parallel; whichever one works, works.
+    """Bridges token data into SignalRGB via two robust methods:
+    1. Built-in Local HTTP API Server (port 16035) — SignalRGB HTML effect polls
+       real-time metrics directly from Python. Works universally on Free & Pro editions.
+    2. Canvas API POST (port 16034) — sends events to SignalRGB onCanvasApiEvent (Pro only).
     """
 
-    def __init__(self, host: str = "localhost", port: int = 16034, sender: str = "aitoken"):
+    def __init__(self, host: str = "localhost", port: int = 16034, sender: str = "aitoken", local_http_port: int = 16035):
         self.host = host
         self.port = port
         self.sender = sender
@@ -933,109 +1135,49 @@ class SignalRGBClient:
         self._last_send_time = 0.0
         self.is_connected = False
 
-        # HTML injection path — the installed effect file
+        # Live telemetry state
+        self.latest_data = {}
+        self.last_client_poll_time = 0.0
+        self.local_http_port = local_http_port
+        self.local_server = None
+
+        # Start local HTTP server thread for SignalRGB effect polling
+        self._start_local_server()
+
+        # HTML installation path
         user_profile = os.environ.get("USERPROFILE", "")
-        if not user_profile:
-            user_profile = os.path.expanduser("~")
         self.effect_html_path = os.path.join(
             user_profile, "Documents", "WhirlwindFX", "Effects",
             "AI Token Tracker", "AI Token Tracker.html"
         )
-        self._last_injected_state = None
-        self._last_inject_time = 0.0
-        # Minimum interval between HTML rewrites (seconds) to avoid thrashing
-        self._inject_interval = 2.0
+
+    def _start_local_server(self):
+        try:
+            class ThreadedServer(http.server.HTTPServer):
+                allow_reuse_address = True
+
+            self.local_server = ThreadedServer(("127.0.0.1", self.local_http_port), TokenHttpHandler)
+            self.local_server.client_ref = self
+            server_thread = threading.Thread(target=self.local_server.serve_forever, daemon=True)
+            server_thread.start()
+        except Exception:
+            pass
 
     def send_event(self, data: dict) -> bool:
-        """Sends token data to SignalRGB via both HTML injection and Canvas API."""
+        """Publishes token data to the local HTTP server and SignalRGB Canvas API."""
         now = time.time()
+        self.latest_data = data
 
-        # 1. Always inject into the HTML file (works with Free edition)
-        self._inject_state_into_html(data, now)
+        # Check if SignalRGB HTML canvas has polled recently
+        if (now - self.last_client_poll_time) < 3.5:
+            self.is_connected = True
+        else:
+            self.is_connected = False
 
-        # 2. Also try Canvas API POST (works only with Pro)
+        # Also try Canvas API POST (Pro edition)
         self._send_canvas_api(data, now)
 
         return True
-
-    def _inject_state_into_html(self, data: dict, now: float):
-        """Atomically rewrites the state defaults in the effect HTML."""
-        if not os.path.exists(self.effect_html_path):
-            return
-
-        # Throttle writes
-        if (now - self._last_inject_time) < self._inject_interval:
-            return
-
-        pct = data.get("percentage", 100)
-        used = data.get("used_tokens", 0)
-        remaining = data.get("remaining_tokens", 0)
-        daily = data.get("daily_tokens", 0)
-        is_gen = "true" if data.get("is_generating", False) else "false"
-        tps = data.get("tokens_per_sec", 0)
-        provider = data.get("provider", "")
-        model = data.get("model", "")
-
-        new_state_block = (
-            f'  // Live State from Python Bridge or Test Mode\n'
-            f'  let state = {{\n'
-            f'    percentage: {pct},\n'
-            f'    used_tokens: {used},\n'
-            f'    remaining_tokens: {remaining},\n'
-            f'    daily_tokens: {daily},\n'
-            f'    is_generating: {is_gen},\n'
-            f'    tokens_per_sec: {tps},\n'
-            f'    provider: "{provider}",\n'
-            f'    model: "{model}",\n'
-            f'    last_update_time: Date.now()\n'
-            f'  }};\n'
-            f'\n'
-            f'  let currentPercentage = {pct};'
-        )
-
-        # Check if identical to last write
-        if new_state_block == self._last_injected_state:
-            return
-
-        try:
-            with open(self.effect_html_path, "r", encoding="utf-8") as f:
-                content = f.read()
-
-            # Replace the state block using regex
-            pattern = (
-                r'  // Live State from Python Bridge or Test Mode\n'
-                r'  let state = \{[^}]+\};\n'
-                r'\n'
-                r'  let currentPercentage = [^;]+;'
-            )
-            replacement = new_state_block
-
-            new_content, count = re.subn(pattern, replacement, content)
-            if count == 0:
-                return  # Pattern not found, skip
-
-            # Atomic write: write to temp file then rename
-            dir_name = os.path.dirname(self.effect_html_path)
-            fd, tmp_path = tempfile.mkstemp(suffix=".html", dir=dir_name)
-            try:
-                with os.fdopen(fd, "w", encoding="utf-8") as tmp_f:
-                    tmp_f.write(new_content)
-                # On Windows, need to remove target first
-                if os.path.exists(self.effect_html_path):
-                    os.replace(tmp_path, self.effect_html_path)
-                else:
-                    shutil.move(tmp_path, self.effect_html_path)
-            except Exception:
-                # Clean up temp file on failure
-                if os.path.exists(tmp_path):
-                    os.unlink(tmp_path)
-                raise
-
-            self._last_injected_state = new_state_block
-            self._last_inject_time = now
-            self.is_connected = True
-        except Exception:
-            pass
 
     def _send_canvas_api(self, data: dict, now: float):
         """Sends event via Canvas API POST (Pro only)."""
@@ -1129,9 +1271,19 @@ def main():
                 daily = metrics["daily_tokens"]
                 rem = metrics["remaining_tokens"]
                 
+                model_str = f" ({metrics['model']})" if metrics.get("model") else ""
+                extra = metrics.get("extra", {})
+                dual_str = ""
+                if extra and "gemini" in extra and "claude" in extra:
+                    is_rem = config.mode == "remaining"
+                    g_val = extra["gemini"].get("remaining_percent", 0.0) if is_rem else extra["gemini"].get("5h_percent", 0.0)
+                    c_val = extra["claude"].get("remaining_percent", 0.0) if is_rem else extra["claude"].get("5h_percent", 0.0)
+                    suffix = "%rem" if is_rem else "%used"
+                    dual_str = f" [Gem:{g_val:.0f}{suffix} Cld:{c_val:.0f}{suffix}]"
+
                 sys.stdout.write(
                     f"\r\033[K[{conn_badge}] {gen_badge} "
-                    f"Quota: {pct:>5.1f}% | Today: {daily:>8,} tok | Rem: {rem:>8,} tok | Active: {metrics['provider']}"
+                    f"Quota: {pct:>5.1f}%{dual_str} | Today: {daily:>8,} tok | Active: {metrics['provider']}{model_str}"
                 )
                 sys.stdout.flush()
                 last_print = now
@@ -1142,4 +1294,10 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as exc:
+        with open(os.path.join(get_base_dir(), "bridge_error.log"), "w", encoding="utf-8") as ef:
+            import traceback
+            traceback.print_exc(file=ef)
+

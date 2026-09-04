@@ -4,6 +4,8 @@ import json
 DEFAULT_CONFIG = {
     "daily_token_budget": 500000,
     "five_hour_token_quota": 200000,
+    "gemini_5h_quota": 1150000,
+    "claude_5h_quota": 70000,
     "mode": "remaining",  # "remaining" (100% down to 0%) or "usage" (0% up to 100%)
     "poll_interval_seconds": 1.0,
     "signalrgb_host": "localhost",

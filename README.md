@@ -1,90 +1,109 @@
-# 🌈 SignalRGB AI Token Tracker
+# 💡 SignalRGB AI Token Tracker
 
-SignalRGB üzerinde yapay zeka araçlarınızın (**Antigravity**, **Claude Code**, **OpenAI Codex**, **Cursor**, **Gemini CLI**, **GitHub Copilot**, **Grok CLI**, **Pi Agent**, **Hermes Agent** ve **OpenRouter**) harcadığı veya kalan token kotalarını **canlı RGB LED aydınlatmasına** dönüştüren entegrasyon sistemi.
+<div align="center">
 
-Tüm görsel efektler, renkler, bar yönleri, uyarı eşikleri ve dahili simülasyon testleri **doğrudan SignalRGB'nin kendi efekt ayarları panelinden** fareyle kontrol edilebilir.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.9+](https://img.shields.io/badge/Python-3.9%2B-blue.svg)](https://www.python.org/)
+[![SignalRGB Compatibility](https://img.shields.io/badge/SignalRGB-Free%20%26%20Pro-00FF66.svg)](https://signalrgb.com)
+[![Platform](https://img.shields.io/badge/Platform-Windows%2010%20%2F%2011-0078D6.svg)](https://www.microsoft.com/windows)
+[![Release](https://img.shields.io/github/v/release/crowroser/SignalRGB-AI-Token-Tracker?color=purple)](https://github.com/crowroser/SignalRGB-AI-Token-Tracker/releases)
 
----
+**Real-time RGB LED Visualizer for AI Coding Assistants & LLM Token Quotas in SignalRGB.**  
+Brings live telemetry from **Antigravity**, **Claude Code**, **OpenAI Codex**, **Cursor**, **Gemini CLI**, **GitHub Copilot**, **Grok CLI**, and **OpenRouter** directly onto your RGB keyboard, mouse, ambient lights, and PC hardware.
 
-## 🚀 Hızlı Kurulum (EXE — Önerilen)
+[ **English** | [Türkçe](README_TR.md) ]
 
-### 1. [Releases](../../releases) sayfasından `AITokenTracker-windows.zip` dosyasını indirin
-### 2. ZIP'i herhangi bir yere çıkarın
-### 3. `setup.bat` dosyasına çift tıklayın
-
-Bu kadar! Kurulum otomatik olarak:
-- ✅ `AITokenTracker.exe`'yi `%LOCALAPPDATA%\AITokenTracker\` klasörüne yükler
-- ✅ SignalRGB efektini `Documents\WhirlwindFX\Effects\` altına kopyalar
-- ✅ Windows başlangıcına ekler (arka planda otomatik çalışır)
-- ✅ Masaüstüne kısayol oluşturur
-- ✅ Servisi hemen başlatır
+</div>
 
 ---
 
-## 🛠️ Geliştirici Kurulumu (Kaynak Koddan)
+## 🌟 Overview
 
-### Adım 1: Efekti SignalRGB'ye Yükleme
-```bash
+When coding with modern AI assistants, hitting unexpected 5-hour rate limits or exhausting daily token pools disrupts your flow. **SignalRGB AI Token Tracker** bridges local AI session telemetry directly into SignalRGB's real-time lighting engine.
+
+- 📊 **Live Quota Visualization:** Your hardware LEDs reflect remaining token capacity (100% down to 0%) or usage (0% up to 100%).
+- ⚡ **Active Generation FX:** LEDs pulse, wave, or surge in real time whenever an AI assistant is actively streaming tokens.
+- ♊ **Dual-Model Intelligent Tracking:** Accurately distinguishes and tracks multiple model families simultaneously (e.g. **Gemini 3.8 Flash** vs **Claude Opus 4.6** in Antigravity) with dedicated 5-hour rolling quotas.
+- 🔓 **100% SignalRGB Free & Pro Compatible:** Works natively on free versions of SignalRGB through an embedded zero-latency local HTTP bridge, with seamless fallback to the Canvas API on SignalRGB Pro.
+- 🎛️ **Full GUI Customization:** Adjust colors, bar orientations, warning flashes, smoothing, and animation styles directly within SignalRGB's effect settings panel.
+
+---
+
+## 📸 Effect Showcase & Visual Modes
+
+The included SignalRGB effect offers 6 distinct visual modes:
+
+| Visual Mode | Description |
+| :--- | :--- |
+| **Progress Bar** | Clean linear progress bar moving across your LEDs indicating current quota. |
+| **Solid Gradient** | Entire device glows smoothly in gradient colors transitioning from Full to Depleted. |
+| **Active Pulse** | Ambient breathing illumination that accelerates during code generation. |
+| **Matrix Wave** | Cyberpunk matrix wave effect scanning across hardware. |
+| **Circular Gauge** | Radial meter lighting suitable for AIO coolers, fans, and circular LED rings. |
+| **Split Zones** | **Dual Model Split:** Left half shows Gemini quota; Right half shows Claude/GPT quota. |
+
+---
+
+## 🤖 Supported AI Providers
+
+The tracker automatically detects local log files and telemetry without needing manual configuration:
+
+| Provider | Telemetry Source | Tracking Metrics |
+| :--- | :--- | :--- |
+| **Antigravity (CLI & IDE)** | `~/.gemini/antigravity-cli/brain/` | Multi-model family detection, sliding 5-hour quota, active generation detection. |
+| **Claude Code** | `~/.claude/projects/` | Daily token usage, session duration, and active writing state. |
+| **OpenAI Codex** | `~/.codex/sessions/` | Token event streams and live code generation status. |
+| **Cursor IDE** | `%APPDATA%\Cursor\User\workspaceStorage` | Aggregated prompt & completion token consumption from SQLite state databases. |
+| **Gemini CLI** | `~/.gemini/tmp/` | Session usage and live prompt metrics. |
+| **GitHub Copilot CLI** | `~/.copilot/session-store.db` | Local interaction logs and token history. |
+| **Grok CLI** | `~/.grok/logs/` | Daily token calculations and generation states. |
+| **Pi Agent / Hermes 3** | `~/.pi/sessions/` & `~/.hermes/` | Session token counts and activity states. |
+| **OpenRouter API** | `openrouter.ai/api/v1/auth/key` | Real-time balance and usage tracking across hundreds of open/proprietary LLMs. |
+
+---
+
+## ⚡ Quick Start
+
+### Option 1: Standalone Installer (Recommended)
+
+1. Download `AITokenTracker-windows.zip` from the latest [Releases](https://github.com/crowroser/SignalRGB-AI-Token-Tracker/releases).
+2. Extract the archive and double-click `setup.bat`.
+3. The installer will:
+   - Install the SignalRGB effect into `Documents\WhirlwindFX\Effects\AI Token Tracker\`.
+   - Configure background execution.
+   - Start the bridge immediately.
+4. Open **SignalRGB**, navigate to **Lighting / Effects**, and select **AI Token Tracker**.
+
+### Option 2: Run from Source (Python 3.9+)
+
+No heavy external dependencies required! The bridge runs on standard Python libraries.
+
+```powershell
+# 1. Clone the repository
+git clone https://github.com/crowroser/SignalRGB-AI-Token-Tracker.git
+cd SignalRGB-AI-Token-Tracker
+
+# 2. Install the SignalRGB effect
 python bridge.py --install
+
+# 3. Start the live monitor
+.\start.bat
 ```
 
-### Adım 2: Köprüyü Çalıştırma
-```bash
-python bridge.py
-```
-
-### Adım 3: EXE Oluşturma (isteğe bağlı)
-```bash
-pip install pyinstaller
-pyinstaller --onefile --name AITokenTracker --add-data "effects/AI Token Tracker;effects/AI Token Tracker" bridge.py
-```
+> **Background Mode:** To launch silently without keeping a terminal open (e.g. from a SignalRGB macro or Windows Startup), run `.\start_background.bat`.
 
 ---
 
-## 🚀 Özellikler
+## ⚙️ Configuration (`config.json`)
 
-- **Tüm Araçları Otomatik Yerel Olarak İzler:**
-  - 🧠 **Antigravity (CLI & IDE):** Seans transkriptlerini ve SQLite kayıtlarını anlık okur.
-  - 🟣 **Claude Code:** `~/.claude/projects/` altındaki seansları tarar.
-  - 🟢 **OpenAI Codex:** `~/.codex/sessions/` altındaki token olaylarını yakalar.
-  - 💻 **Cursor IDE:** `%APPDATA%\Cursor` altındaki `state.vscdb` veritabanından harcanan token'ları toplar.
-  - ♊ **Gemini CLI:** `~/.gemini/tmp/` seans loglarını ayrıştırır.
-  - 🐙 **GitHub Copilot:** `~/.copilot/session-store.db` veritabanını izler.
-  - ⚡ **Grok CLI, Pi Agent, Hermes Agent & OpenRouter API** desteği.
-- **⚡ Canlı Üretim Tespiti (Active Generation Pulse):**
-  - Yapay zeka yanıt üretirken (token akarken) donanımlarınızda nabız, dalga veya neon akış efekti oluşur.
-- **🎛️ SignalRGB Arayüzünden %100 Özelleştirilebilir:**
-  - 6 Farklı Görsel Mod (*Progress Bar, Solid Dynamic Gradient, Active Pulse, Matrix Wave, Circular Gauge, Split Zones*)
-  - 5 Farklı Bar Yönü (*Soldan Sağa, Sağdan Sola, Dikey, Merkezden Dışa*)
-  - Canlı Renk Paletleri (*Dolu/Yeşil, Orta/Sarı, Düşük/Kırmızı, Aktif/Neon Mavi, Arka Plan*)
-  - Geçiş Yumuşaklığı (Smoothing) & Hız Ayarları
-  - Kritik Kota Uyarısı (Düşük kotada flaş/çakar)
-  - **Dahili Test Modu (Test Mode):** Harici servis çalışmasa bile SignalRGB içindeki slider ile efekti test edebilme.
-
----
-
-## 📋 CLI Komutları
-
-```
-AITokenTracker.exe [seçenekler]
-
-Seçenekler:
-  --install       SignalRGB efekt dosyalarını otomatik yükler
-  --background    Konsol penceresini gizler, arka planda çalışır
-  --config PATH   Özel config.json dosya yolu belirtir
-  -h, --help      Yardım mesajını gösterir
-```
-
----
-
-## ⚙️ Yapılandırma (`config.json`)
-
-`config.json` dosyasını açarak günlük bütçenizi veya port ayarlarınızı değiştirebilirsiniz:
+Customize quotas, modes, and active providers in `config.json`:
 
 ```json
 {
   "daily_token_budget": 1000000,
   "five_hour_token_quota": 300000,
+  "gemini_5h_quota": 1150000,
+  "claude_5h_quota": 70000,
   "mode": "remaining",
   "poll_interval_seconds": 1.0,
   "signalrgb_host": "localhost",
@@ -105,64 +124,83 @@ Seçenekler:
 }
 ```
 
-* **`daily_token_budget`**: Günlük hedef token bütçesi (Örn: 1.000.000 token).
-* **`mode`**: `"remaining"` (Kalan %100'den %0'a azalır) veya `"usage"` (%0'dan %100'e dolar).
-* **`openrouter_api_key`**: OpenRouter kredinizi de takip etmek isterseniz API anahtarınızı buraya yazabilirsiniz.
+### Configuration Options:
+- **`mode`**: `"remaining"` (counts down from 100% to 0%) or `"usage"` (fills up from 0% to 100%).
+- **`gemini_5h_quota`**: 5-hour rolling token capacity for Gemini models (Default: `1,150,000`).
+- **`claude_5h_quota`**: 5-hour rolling token capacity for Claude/GPT models (Default: `70,000` calibrated for Opus/Sonnet thinking tokens).
+- **`active_providers`**: List of enabled providers to scan.
+- **`openrouter_api_key`**: Optional OpenRouter API key for live credit tracking.
 
 ---
 
-## 🎛️ SignalRGB Efekt Ayarları Rehberi
+## 🧩 Architecture
 
-| Ayar | Tip | Açıklama |
-| :--- | :--- | :--- |
-| **Visual Mode** | Combobox | Progress Bar, Solid Gradient, Active Pulse, Matrix Wave, Circular Gauge, Split Zones |
-| **Bar Orientation** | Combobox | Soldan Sağa, Sağdan Sola, Aşağıdan Yukarıya, Yukarıdan Aşağıya, Merkezden Dışa |
-| **High / Full Quota Color** | Color Picker | Kota doluyken/bolken yanacak renk (Varsayılan: Yeşil `#00FF66`) |
-| **Medium Quota Color** | Color Picker | Orta seviye kota rengi (Varsayılan: Sarı/Kehribar `#FFB700`) |
-| **Low / Critical Color** | Color Picker | Biten kota rengi (Varsayılan: Kırmızı `#FF0044`) |
-| **Active Generation Color** | Color Picker | AI yazarken oluşacak vurgu rengi (Varsayılan: Neon Mavi `#00D4FF`) |
-| **Generation FX Style** | Combobox | Pulse Glow, Matrix Stream, Neon Surge, Strobe |
-| **Smoothing Alpha** | Slider (0-100) | Renk ve bar geçişlerinin akıcılığı (Varsayılan: 75) |
-| **Flash On Low Quota** | Toggle | Kota %20'nin altına indiğinde flaş/uyarı verme |
-| **[TEST] Manual Test Mode** | Toggle | SignalRGB içinde manuel slider ile test etme |
+```mermaid
+flowchart LR
+    subgraph AI["AI Coding Tools"]
+        AG["Antigravity / Orca"]
+        CC["Claude Code"]
+        CX["Cursor / Codex"]
+        OR["OpenRouter API"]
+    end
 
----
+    subgraph Bridge["AI Token Tracker Bridge (Python)"]
+        Scanner["Multi-Provider Scanner"]
+        Calc["Sliding 5h Quota & Model Classifier"]
+        HttpServer["Local HTTP API (:16035)"]
+        CanvasClient["Canvas API Client (:16034)"]
+    end
 
-## 🔄 CI/CD (Otomatik Build & Release)
+    subgraph SignalRGB["SignalRGB Engine (Free & Pro)"]
+        HTML["AI Token Tracker.html (Ultralight WebKit)"]
+        LEDs["Hardware Canvas: Keyboard / Mouse / RAM / Fans"]
+    end
 
-Bu proje GitHub Actions ile otomatik derleme ve yayınlama desteğine sahiptir:
+    AI -->|Local Logs & DBs| Scanner
+    Scanner --> Calc
+    Calc --> HttpServer
+    Calc --> CanvasClient
 
-- **Her push (main/master):** Otomatik olarak `AITokenTracker.exe` derlenir ve artifact olarak yüklenir.
-- **Tag push (`v*`):** Otomatik olarak GitHub Release oluşturulur ve `AITokenTracker-windows.zip` eklenir.
-
-### Release Yayınlama:
-```bash
-git tag v1.0.0
-git push origin v1.0.0
+    HttpServer -->|Polling HTTP GET /api/tokens| HTML
+    CanvasClient -.->|Canvas API POST (Pro)| HTML
+    HTML -->|Live RGB Lighting| LEDs
 ```
 
 ---
 
-## 📁 Proje Yapısı
+## 🛠️ CLI Arguments
 
+```text
+AITokenTracker.exe [options]  (or python bridge.py [options])
+
+Options:
+  --install       Installs effect files into WhirlwindFX Effects directory
+  --background    Hides console window and runs silently in background
+  --config PATH   Specifies custom config.json path
+  -h, --help      Displays help information
 ```
-SignalRGBAIToken/
-├── bridge.py                    # Tek dosya konsolide kaynak (EXE'nin kaynağı)
-├── config.json                  # Yapılandırma dosyası
-├── setup.ps1                    # Windows installer (PowerShell)
-├── setup.bat                    # Installer başlatıcı
-├── effects/
-│   └── AI Token Tracker/
-│       ├── AI Token Tracker.html  # SignalRGB efekt kodu
-│       └── AI Token Tracker.png   # Efekt önizleme ikonu
-├── src/                         # Modüler kaynak kod (geliştirme)
-│   ├── providers/               # Her AI aracı için ayrı tarayıcı
-│   ├── config.py
-│   ├── scanner.py
-│   ├── signalrgb_client.py
-│   └── main.py
-├── .github/
-│   └── workflows/
-│       └── build-release.yml    # CI/CD: Otomatik EXE build + Release
-└── README.md
-```
+
+---
+
+## 🤝 Contributing
+
+Contributions, issues, and feature requests are welcome!
+Feel free to open an issue or submit a pull request:
+
+1. Fork the Project
+2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your Changes (`git commit -m 'feat: Add support for XYZ assistant'`)
+4. Push to the Branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
+
+---
+
+## 📄 License
+
+Distributed under the **MIT License**. See [`LICENSE`](LICENSE) for more information.
+
+---
+
+<div align="center">
+Created with ❤️ by <a href="https://github.com/crowroser">crowroser (Fatih Gülcü)</a>
+</div>

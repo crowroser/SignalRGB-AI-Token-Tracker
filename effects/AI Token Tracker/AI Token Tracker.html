@@ -100,18 +100,23 @@
 
   // Live State from Python Bridge or Test Mode
   let state = {
-    percentage: 100,
+    percentage: 35,
     used_tokens: 0,
     remaining_tokens: 0,
     daily_tokens: 0,
     is_generating: false,
     tokens_per_sec: 0,
     provider: "Antigravity",
-    model: "Gemini",
-    last_update_time: Date.now()
+    model: "Gemini 3.8 Flash (High)",
+    last_update_time: Date.now(),
+    extra: {
+      active_family: "Gemini",
+      gemini: { remaining_percent: 35, "5h_percent": 65 },
+      claude: { remaining_percent: 0, "5h_percent": 100 }
+    }
   };
 
-  let currentPercentage = 100;
+  let currentPercentage = 35;
   let animClock = 0;
   let waveOffset = 0;
   let blinkPhase = 0;
@@ -162,6 +167,7 @@
         if (data.tokens_per_sec !== undefined) state.tokens_per_sec = Number(data.tokens_per_sec);
         if (data.provider) state.provider = String(data.provider);
         if (data.model) state.model = String(data.model);
+        if (data.extra) state.extra = data.extra;
         state.last_update_time = Date.now();
       }
     } catch (err) {
@@ -169,6 +175,49 @@
     }
   }
   window.onCanvasApiEvent = onCanvasApiEvent;
+
+  // Real-time polling from Python local bridge server (compatible with Free and Pro SignalRGB)
+  function pollLocalBridge() {
+    try {
+      if (typeof fetch !== "undefined") {
+        fetch("http://127.0.0.1:16035/api/tokens", { cache: "no-store" })
+          .then(function(res) {
+            if (res.ok) return res.json();
+            throw new Error("HTTP " + res.status);
+          })
+          .then(function(data) {
+            onCanvasApiEvent(data);
+          })
+          .catch(function() {
+            pollWithXHR();
+          });
+      } else {
+        pollWithXHR();
+      }
+    } catch (e) {
+      pollWithXHR();
+    }
+  }
+
+  function pollWithXHR() {
+    try {
+      var xhr = new XMLHttpRequest();
+      xhr.open("GET", "http://127.0.0.1:16035/api/tokens?t=" + Date.now(), true);
+      xhr.timeout = 1200;
+      xhr.onreadystatechange = function() {
+        if (xhr.readyState === 4 && xhr.status === 200) {
+          try {
+            var data = JSON.parse(xhr.responseText);
+            onCanvasApiEvent(data);
+          } catch (err) {}
+        }
+      };
+      xhr.send();
+    } catch (err) {}
+  }
+
+  setInterval(pollLocalBridge, 1000);
+  pollLocalBridge();
 
 
   function hexToRgb(hex) {
@@ -412,22 +461,47 @@
   }
 
   function drawSplitZones(pct, isGen, blinkDim) {
-    const barW = Math.round(W * 0.75);
+    const hasDual = state.extra && state.extra.gemini && state.extra.claude;
+    const barW = Math.round(W * 0.5);
     const statusW = W - barW;
-    const fraction = pct / 100.0;
-    const fillW = Math.round(barW * fraction);
 
     ctx.save();
-    ctx.fillStyle = getQuotaColor(pct);
-    ctx.fillRect(0, 0, fillW, H);
+    if (hasDual) {
+      // Zone 1: Gemini (Left)
+      const gPct = Math.max(0, Math.min(100, Number(state.extra.gemini.remaining_percent !== undefined ? state.extra.gemini.remaining_percent : (100 - state.extra.gemini.percent_5h))));
+      const gFillW = Math.round(barW * (gPct / 100.0));
+      ctx.fillStyle = getQuotaColor(gPct);
+      ctx.fillRect(0, 0, gFillW, H);
 
-    ctx.fillStyle = "#111111";
-    ctx.fillRect(barW - 2, 0, 4, H);
+      // Divider
+      ctx.fillStyle = "#111111";
+      ctx.fillRect(barW - 2, 0, 4, H);
 
-    ctx.fillStyle = isGen ? color_active : (pct > 20 ? color_high : color_low);
-    const pulse = isGen ? (Math.sin(animClock * 12) * 0.4 + 0.6) : 0.8;
-    ctx.globalAlpha = pulse * blinkDim;
-    ctx.fillRect(barW, 0, statusW, H);
+      // Zone 2: Claude (Right)
+      const cPct = Math.max(0, Math.min(100, Number(state.extra.claude.remaining_percent !== undefined ? state.extra.claude.remaining_percent : (100 - state.extra.claude.percent_5h))));
+      const cFillW = Math.round(statusW * (cPct / 100.0));
+      ctx.fillStyle = getQuotaColor(cPct);
+      ctx.fillRect(barW + 2, 0, cFillW, H);
+
+      if (isGen && enable_gen_fx) {
+        const isGem = state.extra.active_family === "Gemini";
+        if (isGem && gFillW > 0) drawGenOverlay(0, 0, barW, H);
+        else if (!isGem && cFillW > 0) drawGenOverlay(barW + 2, 0, statusW, H);
+      }
+    } else {
+      const fraction = pct / 100.0;
+      const fillW = Math.round(barW * fraction);
+      ctx.fillStyle = getQuotaColor(pct);
+      ctx.fillRect(0, 0, fillW, H);
+
+      ctx.fillStyle = "#111111";
+      ctx.fillRect(barW - 2, 0, 4, H);
+
+      ctx.fillStyle = isGen ? color_active : (pct > 20 ? color_high : color_low);
+      const pulse = isGen ? (Math.sin(animClock * 12) * 0.4 + 0.6) : 0.8;
+      ctx.globalAlpha = pulse * blinkDim;
+      ctx.fillRect(barW, 0, statusW, H);
+    }
     ctx.restore();
   }
 
@@ -475,11 +549,13 @@
     if (isGen) {
       ctx.font = "bold 12px monospace";
       ctx.fillStyle = color_active;
-      ctx.fillText("● GENERATING", 12, 42);
+      const genTitle = state.model ? `⚡ ${state.model.substring(0, 22)}` : "● GENERATING";
+      ctx.fillText(genTitle, 12, 42);
     } else if (state.provider) {
       ctx.font = "11px monospace";
       ctx.fillStyle = "#A0A5B5";
-      ctx.fillText(state.provider, 12, 42);
+      const infoTitle = state.model ? `${state.provider} • ${state.model.substring(0, 18)}` : state.provider;
+      ctx.fillText(infoTitle, 12, 42);
     }
 
     if (state.daily_tokens > 0) {
@@ -490,6 +566,24 @@
         : `${(state.daily_tokens / 1000).toFixed(1)}K tok`;
       ctx.fillText(formatted, W - 80, 24);
     }
+
+    // Dual Model Badges (for Antigravity or providers with extra.gemini / extra.claude)
+    if (state.extra && state.extra.gemini && state.extra.claude) {
+      const isGemActive = state.extra.active_family === "Gemini";
+      const gRem = Math.round(state.extra.gemini.remaining_percent !== undefined ? state.extra.gemini.remaining_percent : (100 - state.extra.gemini.percent_5h));
+      const cRem = Math.round(state.extra.claude.remaining_percent !== undefined ? state.extra.claude.remaining_percent : (100 - state.extra.claude.percent_5h));
+
+      ctx.font = "bold 11px monospace";
+
+      // Gemini badge
+      ctx.fillStyle = isGemActive ? "#00FFCC" : "#55607A";
+      ctx.fillText(`♊ GEM:${gRem}%`, 12, H - 12);
+
+      // Claude badge
+      ctx.fillStyle = !isGemActive ? "#FFB700" : "#55607A";
+      ctx.fillText(`🟣 CLD:${cRem}%`, 110, H - 12);
+    }
+
     ctx.restore();
   }
 

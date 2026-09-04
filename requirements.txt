@@ -1,0 +1,6 @@
+# SignalRGB AI Token Tracker Bridge
+# Core tracker uses 100% Python Standard Library (0 mandatory external dependencies).
+# Compatible with Python 3.9+ on Windows 10 & 11.
+
+# Optional: For compiling standalone single-file .exe
+pyinstaller>=6.0.0
