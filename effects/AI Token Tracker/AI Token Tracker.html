@@ -145,12 +145,18 @@
   function safeUrlDecode(str) {
     if (typeof str !== "string") return str;
     let s = str;
+    if (s.includes("+")) {
+      s = s.replace(/\+/g, " ");
+    }
     for (let i = 0; i < 3; i++) {
       if (!s.includes("%")) break;
       try {
         let dec = decodeURIComponent(s);
         if (dec === s) break;
         s = dec;
+        if (s.includes("+")) {
+          s = s.replace(/\+/g, " ");
+        }
       } catch (e) {
         break;
       }
@@ -166,13 +172,13 @@
       console.log("[AI Token Tracker] onCanvasApiEvent received:", typeof arg1, arg1);
       let data = arg1;
 
-      // Handle HTML-escaped entities (&quot;), URL-encoding (%20), double / triple stringified payloads or wrappers
+      // Handle HTML-escaped entities (&quot;), URL-encoding (%20, +), double / triple stringified payloads or wrappers
       for (let i = 0; i < 5; i++) {
         if (typeof data === "string") {
           if (data.includes("&")) {
             data = unescapeHtml(data);
           }
-          if (data.includes("%")) {
+          if (data.includes("%") || data.includes("+")) {
             data = safeUrlDecode(data);
           }
           try {

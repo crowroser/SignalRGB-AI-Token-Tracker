@@ -112,7 +112,7 @@ class SignalRGBClient:
 
     def _send_canvas_api(self, data: dict, now: float):
         """Sends event via Canvas API POST."""
-        json_str = json.dumps(data)
+        json_str = json.dumps(data, separators=(',', ':'))
 
         # Deduplicate identical payloads unless >1.5 seconds passed
         if json_str == self._last_sent_payload and (now - self._last_send_time) < 1.5:
