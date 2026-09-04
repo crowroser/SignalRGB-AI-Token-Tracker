@@ -124,38 +124,49 @@
   // SignalRGB Canvas API Event Handler - supports all signature variations
   function onCanvasApiEvent(arg1, arg2) {
     try {
-      let rawData = null;
+      console.log("[AI Token Tracker] onCanvasApiEvent received:", typeof arg1, arg1);
+      let data = arg1;
 
-      // 1. Called as onCanvasApiEvent(apiEvent) where apiEvent = { sender: '...', event: '...' }
-      if (arg1 && typeof arg1 === "object" && ("event" in arg1 || "sender" in arg1)) {
-        rawData = arg1.event !== undefined ? arg1.event : arg1;
-      }
-      // 2. Called as onCanvasApiEvent(sender, event)
-      else if (arg2 !== undefined) {
-        rawData = arg2;
-      }
-      // 3. Direct payload
-      else {
-        rawData = arg1;
-      }
-
-      let data = rawData;
-      if (typeof rawData === "string") {
+      // 1. If arg1 is a string, parse it
+      if (typeof data === "string") {
         try {
-          data = JSON.parse(rawData);
+          data = JSON.parse(data);
         } catch (e) {
-          if (rawData.startsWith("percent:")) {
-            data = { percentage: parseFloat(rawData.split(":")[1]) };
-          } else if (rawData === "generating_start") {
+          if (data.startsWith("percent:")) {
+            data = { percentage: parseFloat(data.split(":")[1]) };
+          } else if (data === "generating_start") {
             data = { is_generating: true };
-          } else if (rawData === "generating_stop") {
+          } else if (data === "generating_stop") {
             data = { is_generating: false };
-          } else {
-            data = { raw: rawData };
           }
         }
       }
 
+      // 2. If data is wrapped in { sender: ..., event: ... }
+      if (data && typeof data === "object" && data.event !== undefined) {
+        if (typeof data.event === "string") {
+          try {
+            data = JSON.parse(data.event);
+          } catch (e) {
+            data = data.event;
+          }
+        } else {
+          data = data.event;
+        }
+      }
+
+      // 3. If called as onCanvasApiEvent(sender, event)
+      if (arg2 !== undefined) {
+        let ev = arg2;
+        if (typeof ev === "string") {
+          try { ev = JSON.parse(ev); } catch (e) {}
+        }
+        if (typeof ev === "object" && ev !== null) {
+          data = ev;
+        }
+      }
+
+      // 4. Update state
       if (typeof data === "object" && data !== null) {
         if (data.percentage !== undefined) {
           state.percentage = Math.max(0, Math.min(100, Number(data.percentage)));
@@ -169,55 +180,14 @@
         if (data.model) state.model = String(data.model);
         if (data.extra) state.extra = data.extra;
         state.last_update_time = Date.now();
+
+        console.log("[AI Token Tracker] State updated successfully to " + state.percentage + "%", state.model);
       }
     } catch (err) {
-      console.error("Error processing CanvasApiEvent:", err);
+      console.error("[AI Token Tracker] Error processing CanvasApiEvent:", err);
     }
   }
   window.onCanvasApiEvent = onCanvasApiEvent;
-
-  // Real-time polling from Python local bridge server (compatible with Free and Pro SignalRGB)
-  function pollLocalBridge() {
-    try {
-      if (typeof fetch !== "undefined") {
-        fetch("http://127.0.0.1:16035/api/tokens", { cache: "no-store" })
-          .then(function(res) {
-            if (res.ok) return res.json();
-            throw new Error("HTTP " + res.status);
-          })
-          .then(function(data) {
-            onCanvasApiEvent(data);
-          })
-          .catch(function() {
-            pollWithXHR();
-          });
-      } else {
-        pollWithXHR();
-      }
-    } catch (e) {
-      pollWithXHR();
-    }
-  }
-
-  function pollWithXHR() {
-    try {
-      var xhr = new XMLHttpRequest();
-      xhr.open("GET", "http://127.0.0.1:16035/api/tokens?t=" + Date.now(), true);
-      xhr.timeout = 1200;
-      xhr.onreadystatechange = function() {
-        if (xhr.readyState === 4 && xhr.status === 200) {
-          try {
-            var data = JSON.parse(xhr.responseText);
-            onCanvasApiEvent(data);
-          } catch (err) {}
-        }
-      };
-      xhr.send();
-    } catch (err) {}
-  }
-
-  setInterval(pollLocalBridge, 1000);
-  pollLocalBridge();
 
 
   function hexToRgb(hex) {

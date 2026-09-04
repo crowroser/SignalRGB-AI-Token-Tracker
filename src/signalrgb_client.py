@@ -63,6 +63,7 @@ class SignalRGBClient:
         self.base_url = f"http://{self.host}:{self.port}/canvas/event"
         self._last_sent_payload = None
         self._last_send_time = 0.0
+        self.last_canvas_success_time = 0.0
         self.is_connected = False
 
         # Live telemetry state
@@ -71,7 +72,7 @@ class SignalRGBClient:
         self.local_http_port = local_http_port
         self.local_server = None
 
-        # Start local HTTP server thread for SignalRGB effect polling
+        # Start local HTTP server thread for external widgets / dashboards
         self._start_local_server()
 
         # HTML installation path
@@ -94,27 +95,27 @@ class SignalRGBClient:
             pass
 
     def send_event(self, data: dict) -> bool:
-        """Publishes token data to the local HTTP server and SignalRGB Canvas API."""
+        """Publishes token data to SignalRGB Canvas API and local HTTP server."""
         now = time.time()
         self.latest_data = data
 
-        # Check if SignalRGB HTML canvas has polled recently
-        if (now - self.last_client_poll_time) < 3.5:
+        # Send event to SignalRGB Canvas API
+        self._send_canvas_api(data, now)
+
+        # Connection is active if Canvas API responded with 200 recently OR local HTTP was polled
+        if (now - self.last_canvas_success_time < 5.0) or (now - self.last_client_poll_time < 5.0):
             self.is_connected = True
         else:
             self.is_connected = False
 
-        # Also try Canvas API POST (Pro edition)
-        self._send_canvas_api(data, now)
-
-        return True
+        return self.is_connected
 
     def _send_canvas_api(self, data: dict, now: float):
-        """Sends event via Canvas API POST (Pro only)."""
+        """Sends event via Canvas API POST."""
         json_str = json.dumps(data)
 
-        # Deduplicate identical payloads unless >2 seconds passed
-        if json_str == self._last_sent_payload and (now - self._last_send_time) < 2.0:
+        # Deduplicate identical payloads unless >1.5 seconds passed
+        if json_str == self._last_sent_payload and (now - self._last_send_time) < 1.5:
             return
 
         query = urllib.parse.urlencode({
@@ -132,6 +133,7 @@ class SignalRGBClient:
             )
             with urllib.request.urlopen(req, timeout=1.5) as res:
                 if res.status == 200:
+                    self.last_canvas_success_time = now
                     self.is_connected = True
                 self._last_sent_payload = json_str
                 self._last_send_time = now
